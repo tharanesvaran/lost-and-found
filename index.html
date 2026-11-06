@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>College Lost & Found</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: left rail (desktop) / bottom bar (phone) around one animated content stage; login is a split hero with floating lost-item chips. */
+:root{
+  --bg:#eaf3f0; --surface:#ffffff; --surface2:#f3f8f6; --line:#d6e4df;
+  --fg:#0e1f1c; --muted:#587069;
+  --brand:#0b9a89; --brand-ink:#ffffff; --brand-soft:#d5f2ed;
+  --hot:#ff6a4d; --hot-soft:#ffe3dc; --sun:#f5b301; --sun-soft:#fff2cc;
+  --good:#1f9d57; --good-soft:#d9f4e4; --bad:#d6403a; --bad-soft:#fde0de; --info:#3b6fd8; --info-soft:#dce7fb;
+  --shadow:0 10px 30px -12px rgba(14,60,52,.28);
+  --display:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#07100e; --surface:#0f1c1a; --surface2:#142624; --line:#223a36;
+  --fg:#e6f2ef; --muted:#8aa49e;
+  --brand:#2dd4bf; --brand-ink:#04211d; --brand-soft:#0f3a35;
+  --hot:#ff8468; --hot-soft:#3b1d17; --sun:#ffc933; --sun-soft:#3a2f0a;
+  --good:#4ade80; --good-soft:#12301f; --bad:#ff7b75; --bad-soft:#3a1816; --info:#7fa6ff; --info-soft:#18284a;
+  --shadow:0 10px 30px -12px rgba(0,0,0,.7); color-scheme:dark}}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{
+  --bg:#07100e; --surface:#0f1c1a; --surface2:#142624; --line:#223a36;
+  --fg:#e6f2ef; --muted:#8aa49e;
+  --brand:#2dd4bf; --brand-ink:#04211d; --brand-soft:#0f3a35;
+  --hot:#ff8468; --hot-soft:#3b1d17; --sun:#ffc933; --sun-soft:#3a2f0a;
+  --good:#4ade80; --good-soft:#12301f; --bad:#ff7b75; --bad-soft:#3a1816; --info:#7fa6ff; --info-soft:#18284a;
+  --shadow:0 10px 30px -12px rgba(0,0,0,.7); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0}
+img{max-width:100%}
+html,body{height:100%;max-width:100%;overflow-x:hidden}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));overflow-x:hidden}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.02em;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ambient blobs */
+.blobs{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.blobs i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.45;animation:drift 22s ease-in-out infinite alternate}
+.blobs i:nth-child(1){width:46vmax;height:46vmax;background:var(--brand);left:-14vmax;top:-12vmax}
+.blobs i:nth-child(2){width:34vmax;height:34vmax;background:var(--hot);right:-10vmax;top:18vh;animation-duration:28s;opacity:.28}
+.blobs i:nth-child(3){width:28vmax;height:28vmax;background:var(--sun);left:30vw;bottom:-14vmax;animation-duration:31s;opacity:.25}
+@keyframes drift{to{transform:translate(6vmax,5vmax) scale(1.15)}}
+
+/* buttons */
+.btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;
+  padding:11px 18px;border-radius:12px;font-weight:600;background:var(--brand);color:var(--brand-ink);transition:transform .15s,box-shadow .2s,filter .2s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 18px -8px var(--brand)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn.ghost{background:var(--surface);color:var(--fg);border:1px solid var(--line)}
+.btn.ghost:hover{box-shadow:var(--shadow)}
+.btn.hot{background:var(--hot);color:#fff}.btn.bad{background:var(--bad);color:#fff}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.ripple{position:absolute;border-radius:50%;background:currentColor;opacity:.25;transform:scale(0);animation:rip .6s ease-out forwards;pointer-events:none}
+@keyframes rip{to{transform:scale(4);opacity:0}}
+
+/* inputs */
+label.f{display:grid;gap:6px;font-weight:600;font-size:13px;color:var(--muted)}
+.in,select.in,textarea.in{width:100%;padding:11px 13px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--fg);transition:border-color .2s,box-shadow .2s}
+.in:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft);outline:0}
+textarea.in{min-height:84px;resize:vertical}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+
+/* login */
+.login{min-height:100%;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:36px;align-items:center;max-width:1100px;margin:0 auto;padding-block:32px}
+.hero h1{font-size:clamp(38px,6vw,68px);line-height:.98;font-weight:800}
+.hero h1 em{font-style:normal;color:var(--hot);position:relative;white-space:nowrap}
+.hero p{color:var(--muted);max-width:46ch;font-size:17px;margin:18px 0 0}
+.brandmark{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:18px;margin-bottom:22px}
+.brandmark b{width:38px;height:38px;border-radius:12px;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
+.floaters{position:relative;height:150px;margin-top:30px;overflow:hidden}
+.floaters span{position:absolute;display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);font-weight:600;font-size:13px;animation:bob 5s ease-in-out infinite}
+.floaters span svg{color:var(--brand)}
+@keyframes bob{50%{transform:translateY(-14px) rotate(-2deg)}}
+.logincard{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow);animation:pop .6s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes pop{from{opacity:0;transform:translateY(24px) scale(.96)}}
+.gbtn{width:100%;padding:13px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;font-weight:600;transition:.2s}
+.gbtn:hover{box-shadow:var(--shadow);transform:translateY(-2px);border-color:var(--brand)}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--surface2);border-radius:14px;padding:4px;gap:4px;margin:16px 0}
+.seg button{border:0;background:none;padding:10px;border-radius:11px;font-weight:600;cursor:pointer;color:var(--muted);transition:.25s}
+.seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 2px 8px -2px rgba(0,0,0,.2)}
+.who{display:flex;gap:12px;align-items:center;padding:12px;background:var(--surface2);border-radius:14px;margin-top:6px}
+.av{width:42px;height:42px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-weight:800;flex:none;overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover}
+.msg-bad{color:var(--bad);font-size:13px;font-weight:600;min-height:18px;margin-top:8px}
+
+/* shell */
+.shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;max-width:1280px;margin:0 auto;padding-block:20px}
+nav.rail{position:sticky;top:20px;align-self:start;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:14px;display:grid;gap:4px;box-shadow:var(--shadow)}
+nav.rail .brandmark{margin:6px 6px 14px;font-size:16px}
+.nv{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:13px;border:0;background:none;cursor:pointer;color:var(--muted);font-weight:600;text-align:left;position:relative;transition:.2s;white-space:nowrap}
+.nv:hover{background:var(--surface2);color:var(--fg);transform:translateX(3px)}
+.nv.on{background:var(--brand-soft);color:var(--brand)}
+.nv .lbl.short{display:none}
+.nv .dot{margin-left:auto;background:var(--hot);color:#fff;border-radius:999px;font-size:11px;min-width:20px;height:20px;display:grid;place-items:center;padding:0 5px;animation:pulse 2s infinite}
+@keyframes pulse{50%{transform:scale(1.15)}}
+.rail .sp{height:1px;background:var(--line);margin:8px 4px}
+main{min-width:0}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:22px}
+.top h2{font-size:clamp(26px,4vw,38px);font-weight:800}
+.top p{margin:2px 0 0;color:var(--muted)}
+.tools{display:flex;gap:8px;align-items:center}
+.noanim .rise,.noanim.stage{animation:none}
+.stage{animation:enter .45s cubic-bezier(.2,.8,.2,1) both}
+@keyframes enter{from{opacity:0;transform:translateY(14px)}}
+.rise{animation:rise .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*55ms)}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.98)}}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:18px;transition:transform .25s,box-shadow .25s,border-color .25s}
+.tilt{transform:perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+.tilt:hover{box-shadow:var(--shadow);border-color:var(--brand)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.stat{padding:16px;border-radius:20px;background:var(--surface);border:1px solid var(--line);position:relative;overflow:hidden}
+.stat b{display:block;font-family:var(--display);font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-weight:600;font-size:13px}
+.stat::after{content:"";position:absolute;right:-18px;top:-18px;width:70px;height:70px;border-radius:50%;background:var(--c,var(--brand));opacity:.18}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.chip{border:1.5px solid var(--line);background:var(--surface);padding:7px 14px;border-radius:999px;font-weight:600;font-size:13px;cursor:pointer;transition:.2s;color:var(--muted)}
+.chip:hover{border-color:var(--brand);color:var(--fg)}
+.chip.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.p-unclaimed{background:var(--info-soft);color:var(--info)}.p-claimed{background:var(--sun-soft);color:var(--sun)}
+.p-returned{background:var(--good-soft);color:var(--good)}.p-expired{background:var(--bad-soft);color:var(--bad)}
+.p-lock{background:var(--hot-soft);color:var(--hot)}.p-new{background:var(--brand-soft);color:var(--brand)}
+.list{display:grid;gap:12px}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.ic{width:46px;height:46px;border-radius:14px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;flex:none}
+.ic.v{background:var(--hot-soft);color:var(--hot)}
+.row{display:flex;gap:14px;align-items:center}
+.row>.grow{flex:1;min-width:0}
+.meta{display:flex;gap:6px 14px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:4px}
+.meta span{display:inline-flex;align-items:center;gap:5px}.meta svg{width:14px;height:14px}
+.ring{position:relative;width:52px;height:52px;flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:5}
+.ring .bg{stroke:var(--line)}.ring .fg{stroke:var(--brand);stroke-linecap:round;stroke-dasharray:125.7;stroke-dashoffset:125.7;animation:fill 1.1s .2s cubic-bezier(.2,.8,.2,1) forwards}
+.ring.low .fg{stroke:var(--hot)}
+@keyframes fill{to{stroke-dashoffset:var(--off)}}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-family:var(--display)}
+.empty{text-align:center;padding:44px 16px;color:var(--muted)}
+.empty svg{width:44px;height:44px;color:var(--brand);margin-bottom:8px;animation:bob 4s ease-in-out infinite}
+.sec{font-family:var(--display);font-weight:700;font-size:18px;margin:24px 0 12px}
+.hint{color:var(--muted);font-size:13px}
+.banner{display:flex;gap:12px;align-items:center;background:linear-gradient(100deg,var(--brand-soft),var(--sun-soft));border-radius:18px;padding:14px 18px;margin-bottom:18px;font-weight:600}
+.warn{background:var(--sun-soft);color:var(--fg);border-radius:14px;padding:11px 14px;font-size:13px;margin-bottom:14px}
+
+/* timeline */
+.tl{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:16px;position:relative}
+.tl .s{display:grid;justify-items:center;gap:6px;text-align:center;font-size:12px;font-weight:600;color:var(--muted);position:relative}
+.tl .s i{width:26px;height:26px;border-radius:50%;background:var(--surface2);border:2px solid var(--line);display:grid;place-items:center;z-index:1;transition:.4s;font-style:normal}
+.tl .s::before{content:"";position:absolute;top:12px;left:-50%;width:100%;height:3px;background:var(--line);z-index:0}
+.tl .s:first-child::before{display:none}
+.tl .s.done{color:var(--fg)}.tl .s.done i{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.tl .s.done::before{background:var(--brand)}
+.tl .s.now i{animation:pulse 1.6s infinite;box-shadow:0 0 0 6px var(--brand-soft)}
+.tl .s i svg{width:14px;height:14px;stroke-width:3}
+
+/* map */
+.map{width:100%;max-width:480px;border-radius:18px;background:var(--surface2);border:1.5px solid var(--line);cursor:crosshair;display:block;touch-action:manipulation}
+.map .z{fill:var(--surface);stroke:var(--line);stroke-width:1.5;transition:.2s}
+.map .z:hover,.map .z.on{fill:var(--brand-soft);stroke:var(--brand)}
+.map text{fill:var(--fg);font-family:var(--body);font-weight:600;pointer-events:none}
+.map .road{stroke:var(--line);stroke-width:11;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.map .dec{fill:var(--line);opacity:.5}.map .z.b{fill:var(--sun-soft)}.map .z.b:hover,.map .z.b.on{fill:var(--brand-soft)}
+.map .nrth{font-size:11px;font-weight:700;fill:var(--muted)}.map .nrth-a{stroke:var(--muted);stroke-width:2;fill:none;stroke-linecap:round}
+.pin{animation:drop .5s cubic-bezier(.3,1.6,.5,1) both;transform-box:fill-box;transform-origin:50% 100%}
+@keyframes drop{from{transform:translateY(-40px) scale(.4);opacity:0}}
+.pinlabel{font-weight:600;margin-top:8px;display:flex;gap:6px;align-items:center;color:var(--brand)}
+
+/* modal / toast */
+.scrim{position:fixed;inset:0;background:rgba(5,15,13,.55);backdrop-filter:blur(6px);display:grid;place-items:center;z-index:50;padding:16px;animation:fade .25s both}
+@keyframes fade{from{opacity:0}}
+.modal{background:var(--surface);border-radius:24px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);animation:pop .4s cubic-bezier(.2,.9,.3,1.2) both;border:1px solid var(--line)}
+.modal h3{font-size:22px;margin-bottom:6px}
+.qrbox{display:grid;place-items:center;background:#fff;border-radius:18px;padding:16px;margin:14px 0;width:fit-content;margin-inline:auto;box-shadow:0 0 0 6px var(--brand-soft)}
+.qrbox img,.qrbox canvas{display:block;max-width:100%}
+#toasts{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:grid;gap:8px;z-index:90;width:max-content;max-width:92vw}
+.toast{background:var(--fg);color:var(--bg);padding:11px 18px;border-radius:14px;font-weight:600;box-shadow:var(--shadow);animation:rise .4s both}
+.toast.out{opacity:0;transform:translateY(10px);transition:.35s}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:99}
+
+/* bars */
+.bar{display:grid;grid-template-columns:130px 1fr 34px;gap:10px;align-items:center;margin:8px 0;font-size:13px;font-weight:600}
+.bar div{height:12px;background:var(--surface2);border-radius:99px;overflow:hidden}
+.bar div i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--sun));animation:grow 1s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes grow{to{width:var(--w)}}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding:8px}
+td{padding:10px 8px;border-top:1px solid var(--line)}
+.scroll{overflow-x:auto}
+.meter{height:10px;background:var(--surface2);border-radius:99px;overflow:hidden}.meter i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--sun));animation:grow 1s cubic-bezier(.2,.8,.2,1) forwards}
+.lb{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}.lb b.rk{width:26px;height:26px;border-radius:50%;background:var(--sun-soft);color:var(--sun);display:grid;place-items:center;font-size:13px}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+.cmp div{background:var(--surface2);border-radius:12px;padding:10px;font-size:13px}
+.cmp small{display:block;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+.ok{color:var(--good)}.no{color:var(--bad)}
+
+@media (max-width:860px){
+  .login{grid-template-columns:minmax(0,1fr);gap:20px}.floaters{height:110px}
+  .shell{grid-template-columns:minmax(0,1fr);padding-bottom:96px}
+  nav.rail{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;border-radius:20px 20px 0 0;display:flex;overflow-x:auto;gap:2px;padding:8px max(10px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px));scrollbar-width:none}
+  nav.rail .brandmark,nav.rail .sp,.nv .lbl.long{display:none}
+  .nv .lbl.short{display:inline}.nv{flex:1 0 auto}
+  .top{flex-wrap:nowrap;align-items:flex-start}.top>div:first-child{min-width:0;flex:1}.top h2{font-size:28px}
+  .nv{flex-direction:column;gap:2px;padding:8px 12px;font-size:11px;min-width:64px;align-items:center}
+  .nv:hover{transform:none}.nv .dot{position:absolute;top:2px;right:8px;margin:0}
+  .bar{grid-template-columns:96px 1fr 28px}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+</style>
+</head><body>
+
+<div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>
+<div id="app"></div>
+<div id="toasts" aria-live="polite"></div>
+<canvas id="fx"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAY=864e5, now=()=>Date.now();
+const fmtDate=d=>{try{return new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}catch(e){return d}};
+const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+const ICONS={
+ search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',plus:'<path d="M12 5v14M5 12h14"/>',box:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+ user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',users:'<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2.3.6 4 2.3 4 5.2"/>',
+ pin:'<path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>',check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+ shield:'<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',qr:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4"/>',
+ log:'<path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',home:'<path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+ out:'<path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 8l4 4-4 4M20 12H9"/>',lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+ hand:'<path d="M7 11V5.5a1.5 1.5 0 0 1 3 0V10m0-5.5a1.5 1.5 0 0 1 3 0V10m0-3.5a1.5 1.5 0 0 1 3 0V12m0-3a1.5 1.5 0 0 1 3 0v5c0 4-3 7-7 7-3 0-5-1.5-6.5-4L4 14c-.6-1 .6-2.300 1.800-1.500L7 14"/>',
+ sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.900 4.900l1.400 1.400M17.700 17.700l1.400 1.400M2 12h2M20 12h2M4.900 19.100l1.400-1.400M17.700 6.300l1.400-1.400"/>',
+ phone:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',wallet:'<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.500" r="1"/>',
+ laptop:'<rect x="4" y="5" width="16" height="11" rx="1.500"/><path d="M2 20h20"/>',key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M16 7l3 3"/>',bag:'<path d="M5 8h14l1 13H4z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+ bottle:'<path d="M10 2h4v3l1.500 3v13a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V8L10 5z"/>',book:'<path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-6"/>',
+ ear:'<path d="M6 14a6 6 0 1 1 12 0v4a2 2 0 0 1-4 0M9 14a3 3 0 0 1 6 0"/>',watch:'<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l.5-3h5L15 6M9 18l.5 3h5l.5-3M12 10v2l1.500 1"/>',
+ shirt:'<path d="m8 3-5 3 2 4 3-1v12h8V9l3 1 2-4-5-3a4 4 0 0 1-8 0z"/>',id:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.5-2 5.500-2 6 0M14 10h4M14 14h3"/>',
+ card:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',cert:'<path d="M5 3h14v14H5z"/><path d="M8 8h8M8 12h5M14 21l2-3 2 3v-4"/>',more:'<circle cx="5" cy="12" r="1.500"/><circle cx="12" cy="12" r="1.500"/><circle cx="19" cy="12" r="1.500"/>',
+ copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',dl:'<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',
+ spark:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>'};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.more}</svg>`;
+const CATS=[['Phone','phone'],['Wallet','wallet'],['Laptop','laptop'],['Keys','key'],['Bag','bag'],['Water bottle','bottle'],['Books / notes','book'],['Earphones','ear'],['Watch / jewellery','watch'],['Clothing','shirt'],['ID card','id'],['ATM card','card'],['Certificate','cert'],['Other','more']];
+const VALUABLES=['Phone','Wallet','Laptop','Watch / jewellery'], SENSITIVE=['ID card','ATM card','Certificate'];
+const catIcon=c=>(CATS.find(x=>x[0]===c)||[0,'more'])[1];
+const ZONES=[['Nachimuthu Polytechnic',122,103,128,67,{l:['Nachimuthu','Polytechnic'],b:1}],['Block A',290,85,93,165,{l:['BLOCK A'],rot:90,b:1}],['Block B',308,262,56,66,{l:['Block B'],b:1}],['Block C',140,266,132,156,{l:['BLOCK C'],b:1}],['CC Hall',24,222,84,76,{l:['CC HALL'],b:1}],['Book Depot',26,305,84,60,{l:['BOOK','DEPOT'],b:1}]];
+const zoneAt=(x,y)=>(ZONES.find(z=>x>=z[1]&&x<=z[1]+z[3]&&y>=z[2]&&y<=z[2]+z[4])||['Campus grounds'])[0];
+const STEPS=[['requested','Requested'],['approved','Approved'],['ready','Ready'],['collected','Collected']];
+
+/* ---------- toast / fx / modal ---------- */
+function toast(t){const el=document.createElement('div');el.className='toast';el.textContent=t;$('#toasts').append(el);setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),400)},2600)}
+function confetti(){const c=$('#fx'),x=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+ const cols=['#0b9a89','#ff6a4d','#f5b301','#3b6fd8'];const ps=Array.from({length:90},()=>({x:innerWidth/2,y:innerHeight*.6,vx:(Math.random()-.5)*14,vy:-Math.random()*14-4,r:Math.random()*5+3,c:cols[Math.random()*4|0],a:1}));
+ (function f(){x.clearRect(0,0,c.width,c.height);let alive=0;ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.35;p.a-=.012;if(p.a>0){alive++;x.globalAlpha=p.a;x.fillStyle=p.c;x.fillRect(p.x,p.y,p.r,p.r*1.6)}});alive?requestAnimationFrame(f):x.clearRect(0,0,c.width,c.height)})()}
+function modal(html,onMount){const s=document.createElement('div');s.className='scrim';s.innerHTML=`<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+ const close=()=>{s.style.opacity=0;setTimeout(()=>s.remove(),200)};s.addEventListener('click',e=>{if(e.target===s)close()});document.body.append(s);onMount&&onMount(s,close);return close}
+document.addEventListener('click',e=>{const b=e.target.closest('.btn');if(!b)return;const r=b.getBoundingClientRect(),d=Math.max(r.width,r.height),s=document.createElement('span');s.className='ripple';s.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;b.append(s);setTimeout(()=>s.remove(),600)});
+document.addEventListener('mousemove',e=>{const c=e.target.closest&&e.target.closest('.tilt');if(!c)return;const r=c.getBoundingClientRect();c.style.setProperty('--ry',((e.clientX-r.left)/r.width-.5)*6+'deg');c.style.setProperty('--rx',(-((e.clientY-r.top)/r.height-.5))*6+'deg')});
+document.addEventListener('mouseout',e=>{const c=e.target.closest&&e.target.closest('.tilt');if(c){c.style.setProperty('--rx','0deg');c.style.setProperty('--ry','0deg')}});
+function countUp(root){$$('[data-count]',root).forEach(el=>{const to=+el.dataset.count,t0=performance.now();(function f(t){const k=Math.min(1,(t-t0)/900);el.textContent=Math.round(to*(1-Math.pow(1-k,3)));k<1&&requestAnimationFrame(f)})(t0)})}
+
+/* ---------- data layer (shared db, with in-memory fallback for previews) ---------- */
+function memDb(){const data={},subs=[];const notify=p=>subs.filter(s=>s.col===p).forEach(s=>s.run());
+ const col=name=>{const api={doc(id){id=id||Math.random().toString(36).slice(2,12);const path=name+'/'+id;
+   return{id,path,async get(){const d=data[path];return{id,exists:!!d,data:()=>d}},async set(v){data[path]=JSON.parse(JSON.stringify(v));notify(name)},async update(v){data[path]={...(data[path]||{}),...v};notify(name)},async delete(){delete data[path];notify(name)},
+   onSnapshot(n){const s={col:name,run:()=>n({exists:!!data[path],id,data:()=>data[path]})};subs.push(s);s.run();return()=>{}}}},
+  async add(v){const r=api.doc();await r.set(v);return r},
+  onSnapshot(n){const s={col:name,run:()=>n({docs:Object.keys(data).filter(k=>k.startsWith(name+'/')&&!k.slice(name.length+1).includes('/')).map(k=>({id:k.split('/').pop(),exists:true,data:()=>data[k]}))})};subs.push(s);s.run();return()=>{}}};return api};
+ return{collection:col,doc:p=>{const i=p.lastIndexOf('/');return col(p.slice(0,i)).doc(p.slice(i+1))}}}
+const S={db:null,user:null,dl:null,demo:false,me:null,role:null,adminName:'',profile:null,view:'',
+  items:[],returns:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],settings:{holdDays:45},pick:null,prefill:null,filter:'all',q:''};
+
+/* ---------- Supabase adapter: Firestore-style API over one "docs" table, so the app below is unchanged ---------- */
+function sbAuth(sb){
+  const map=u=>u&&{uid:u.id,displayName:(u.user_metadata&&(u.user_metadata.full_name||u.user_metadata.name))||'',email:u.email||'',photoURL:(u.user_metadata&&(u.user_metadata.avatar_url||u.user_metadata.picture))||''};
+  return{
+    onAuthStateChanged(cb){let last;sb.auth.onAuthStateChange((_e,s)=>{const id=s&&s.user?s.user.id:null;if(id===last)return;last=id;setTimeout(()=>cb(map(s&&s.user)),0)})},
+    /* signInWithOAuth RESOLVES with {error} instead of throwing, so it must be checked or failures are silent */
+    async signInWithGoogle(){const r=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:'select_account'}}});if(r.error)throw r.error;return r},
+    signOut(){return sb.auth.signOut()}}}
+function sbDb(sb){
+  const rid=()=>(crypto.randomUUID?crypto.randomUUID().replace(/-/g,'').slice(0,20):Math.random().toString(36).slice(2,12)+Date.now().toString(36));
+  const clean=v=>JSON.parse(JSON.stringify(v));
+  /* One shared realtime channel for the whole table. Row deletes cannot be filtered server-side, so we listen unfiltered
+     and match on `col` here (a delete event still carries the primary key, which includes col). Our own writes also ping
+     listeners directly, so the screen updates instantly even if realtime is not enabled on the table. */
+  const subs=new Set();let ch=null;
+  const ping=col=>subs.forEach(s=>{if(s.col===col)s.kick()});
+  const openChannel=()=>{if(ch)return;ch=sb.channel('lf-docs').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{const r=(p.new&&p.new.col)?p.new:p.old;if(r&&r.col)ping(r.col)}).subscribe()};
+  const live=(col,run)=>{openChannel();const s={col,kick(){clearTimeout(s.t);s.t=setTimeout(run,40)}};subs.add(s);run();
+    return()=>{subs.delete(s);clearTimeout(s.t);if(!subs.size&&ch){sb.removeChannel(ch);ch=null}}};
+  const query=(col,flt)=>({
+    where(f,op,v){return query(col,[f,v])},
+    onSnapshot(next,err){return live(col,async()=>{let b=sb.from('docs').select('id,data').eq('col',col);if(flt)b=b.eq('data->>'+flt[0],String(flt[1]));const r=await b;
+      if(r.error){err&&err(r.error);return}next({docs:r.data.map(x=>({id:x.id,exists:true,data:()=>x.data}))})})}});
+  const doc=(col,id)=>{id=id||rid();return{id,path:col+'/'+id,
+    async get(){const r=await sb.from('docs').select('data').eq('col',col).eq('id',id).maybeSingle();if(r.error)throw r.error;return{id,exists:!!r.data,data:()=>r.data&&r.data.data}},
+    async set(v){const r=await sb.from('docs').upsert({col,id,data:clean(v)},{onConflict:'col,id'});if(r.error)throw r.error;ping(col)},
+    async update(v){const r=await sb.rpc('doc_update',{p_col:col,p_id:id,p_patch:clean(v)});if(r.error)throw r.error;ping(col)},
+    async delete(){const r=await sb.from('docs').delete().eq('col',col).eq('id',id);if(r.error)throw r.error;ping(col)},
+    onSnapshot(next,err){return live(col,async()=>{const r=await sb.from('docs').select('data').eq('col',col).eq('id',id).maybeSingle();
+      if(r.error){err&&err(r.error);return}next({id,exists:!!r.data,data:()=>r.data&&r.data.data})})}}};
+  return{collection:c=>({...query(c),doc:id=>doc(c,id),async add(v){const r=doc(c);await r.set(v);return r}}),doc:p=>{const i=p.lastIndexOf('/');return doc(p.slice(0,i),p.slice(i+1))}}}
+
+async function meFrom(u){
+  const me={id:u.uid,name:u.displayName||'',email:u.email||'',avatarUrl:u.photoURL||'',canEdit:false,adminUsername:''};
+  try{const d=await S.db.doc('adminAllowlist/'+(u.email||'').toLowerCase()).get();if(d.exists){me.canEdit=true;me.adminUsername=(d.data().username||'').toLowerCase()}}catch(e){}
+  return me;
+}
+async function boot(){
+  {const t=store.get('lf_theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}
+  const cfg=window.SUPABASE_CONFIG;
+  const configured=!!(cfg&&cfg.url&&cfg.anonKey&&!/^(PASTE|YOUR)/i.test(cfg.url)&&!/^(PASTE|YOUR)/i.test(cfg.anonKey));
+  /* Google/Supabase send failures back in the URL (query or hash). Read them before the client strips the URL. */
+  const urlErr=(()=>{try{const p=new URLSearchParams(location.search),h=new URLSearchParams(location.hash.replace(/^#/,''));return p.get('error_description')||h.get('error_description')||''}catch(e){return ''}})();
+  if(configured&&window.supabase){
+    try{S.sb=window.supabase.createClient(cfg.url,cfg.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});S.auth=sbAuth(S.sb);S.db=sbDb(S.sb);
+      renderLogin(1);
+      if(urlErr){toast('Sign-in failed: '+urlErr.replace(/\+/g,' '));try{history.replaceState(null,'',location.pathname)}catch(e){}}
+      S.auth.onAuthStateChanged(async u=>{if(S.role)return;if(u){try{S.me=await meFrom(u);renderLogin(2)}catch(e){console.error(e);toast('Could not load your account. Please sign in again.');renderLogin(1)}}else{S.me=null;renderLogin(1)}});
+      return}catch(e){console.error(e)}
+  }
+  S.libErr=configured&&!window.supabase;   /* keys are set but the Supabase script did not load (offline or blocked) */
+  S.db=memDb();S.demo=true;S.setup=true;renderLogin(1);
+}
+async function saveFile(name,data){const b=data instanceof Blob?data:new Blob([data],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
+
+async function putMap(col,uid,key,val){const r=S.db.collection(col).doc(uid),d=await r.get();if(d.exists)await r.update({[key]:val});else await r.set({[key]:val})}
+const who=c=>S.profiles.find(p=>p.uid===c.studentId)||{name:'Student',roll:''};
+/* ---------- login ---------- */
+let loginRole='student';
+function renderLogin(step=1){
+  const app=$('#app');
+  const left=`<section class="hero"><div class="brandmark"><b>${ic('search')}</b>College Lost &amp; Found</div>
+   <h1>Lost it? Found it. <em>Back to you.</em></h1>
+   <p>One office, one list, no wandering from desk to desk. Report what you find, claim what you lost, and follow every step from your phone.</p>
+   <div class="floaters" aria-hidden="true"><span style="left:0;top:8px;animation-delay:0s">${ic('phone')}Phone</span><span style="left:38%;top:0;animation-delay:-1.5s">${ic('key')}Keys</span><span style="left:8%;top:78px;animation-delay:-3s">${ic('wallet')}Wallet</span><span style="left:50%;top:70px;animation-delay:-2s">${ic('bag')}Bag</span><span style="right:0;top:20px;animation-delay:-4s">${ic('laptop')}Laptop</span></div></section>`;
+  let card;
+  if(step===1){
+    card=`<div class="logincard"><h3 style="font-size:26px">Welcome</h3><p class="hint" style="margin:4px 0 18px">Sign in with your college Google account to continue.</p>
+     <button class="gbtn" id="g"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H24v8h11.3C33.700 33.100 29.300 36 24 36a12 12 0 1 1 7.900-21l5.700-5.700A20 20 0 1 0 44 24c0-1.300-.1-2.700-.4-4z"/><path fill="#FF3D00" d="m6.300 14.700 6.600 4.800A12 12 0 0 1 31.900 15l5.700-5.700A20 20 0 0 0 6.300 14.700z"/><path fill="#4CAF50" d="M24 44c5.200 0 9.900-2 13.400-5.200l-6.200-5.200A12 12 0 0 1 12.700 28l-6.500 5A20 20 0 0 0 24 44z"/><path fill="#1976D2" d="M43.600 20H24v8h11.300a12 12 0 0 1-4.100 5.600l6.200 5.200C37 39.200 44 34 44 24c0-1.300-.1-2.700-.4-4z"/></svg>Continue with Google</button>
+     <p class="hint" style="margin-top:14px">Google sign-in is the only way in. Students and staff use the same page.</p>${S.demo?`<div class="warn" style="margin-top:12px">${S.libErr?'Demo mode: the Supabase library could not be loaded (check your internet connection or ad blocker), so data stays in this tab only.':'Demo mode: Supabase is not configured yet, so data stays in this tab only. Add your Supabase URL and anon key in <b>config.js</b>.'}</div>`:''}</div>`;
+  }else{
+    const m=S.me;
+    card=`<div class="logincard"><div class="who"><div class="av">${m.avatarUrl?`<img src="${esc(m.avatarUrl)}" alt="">`:esc((m.name||'?')[0].toUpperCase())}</div><div style="min-width:0"><b>${esc(m.name||'Signed in')}</b><div class="hint" style="overflow-wrap:anywhere">${esc(m.email||'')}</div></div></div>
+     <div class="seg" role="tablist"><button class="${loginRole==='student'?'on':''}" data-r="student">I'm a student</button><button class="${loginRole==='admin'?'on':''}" data-r="admin">I'm staff</button></div>
+     ${loginRole==='admin'?`<label class="f">Admin username (ends with .admin)<input class="in" id="au" placeholder="office1.admin" autocomplete="off" value="${esc(store.get('lf_admin')||'')}"></label>`:`<p class="hint">New here? You'll add your roll number and department next so the office can reach you.</p>`}
+     <div class="msg-bad" id="lerr"></div><button class="btn" id="go" style="width:100%;margin-top:6px">Continue</button></div>`;
+  }
+  app.innerHTML=`<div class="login">${left}${card}</div>`;
+  if(step===1)$('#g').onclick=async()=>{
+    if(S.auth){const b=$('#g');b.disabled=true;try{await S.auth.signInWithGoogle()}catch(e){b.disabled=false;toast('Sign-in failed: '+(e.message||'check the Google provider in Supabase'))}return}
+    S.me={id:'demo-user',name:'Demo Student',email:'demo@college.edu',avatarUrl:'',canEdit:true};renderLogin(2)};
+  else{$$('.seg button').forEach(b=>b.onclick=()=>{loginRole=b.dataset.r;renderLogin(2)});
+    $('#go').onclick=()=>enter();
+  }
+}
+async function enter(){
+  if(loginRole==='admin'){
+    const u=($('#au').value||'').trim().toLowerCase();
+    if(!/^[a-z0-9._-]+\.admin$/.test(u)){$('#lerr').textContent='Username must end with .admin, like office1.admin.';return}
+    if(S.me.adminUsername&&S.me.adminUsername!==u){$('#lerr').textContent='That username does not match the one registered for this Google account.';return}
+    if(!S.me.canEdit){$('#lerr').textContent='This Google account is not on the staff allowlist. Ask the system owner to add it.';return}
+    store.set('lf_admin',u);S.role='admin';S.adminName=u;
+    await S.db.collection('adminUsers').doc(S.me.id).set({username:u,name:S.me.name,email:S.me.email||'',at:now()}).catch(()=>{});
+    startApp();
+  }else{
+    S.role='student';
+    let p=null;try{const d=await S.db.doc('data/users/'+S.me.id+'/profile').get();p=d.exists?d.data():null}catch(e){}
+    if(p){S.profile=p;startApp()}else renderOnboard();
+  }
+}
+function renderOnboard(){
+  const m=S.me;
+  $('#app').innerHTML=`<div class="login" style="grid-template-columns:minmax(0,560px);justify-content:center"><div class="logincard"><h3 style="font-size:26px">Set up your profile</h3><p class="hint" style="margin:4px 0 16px">Shown only to the admin office, so staff can contact you about your items.</p>
+   <form id="pf" class="grid2" style="grid-template-columns:1fr"><label class="f">Full name<input class="in" id="pn" required value="${esc(m.name||'')}"></label>
+   <div class="grid2"><label class="f">Roll number<input class="in" id="pr" required placeholder="21CS104"></label><label class="f">Phone number<input class="in" id="pp" required inputmode="tel" pattern="[0-9+ \\-]{8,15}" placeholder="98765 43210"></label></div>
+   <label class="f">Gmail address<input class="in" id="pe" type="email" required value="${esc(m.email||'')}"></label>
+   <div class="grid2"><label class="f">Year of study<select class="in" id="py" required><option value="">Select</option><option>1st year</option><option>2nd year</option><option>3rd year</option><option>4th year</option><option>PG / other</option></select></label>
+   <label class="f">Department<input class="in" id="pd" required placeholder="Computer Science"></label></div>
+   <div class="msg-bad" id="lerr"></div><button class="btn" style="width:100%">Save and continue</button></form></div></div>`;
+  $('#pf').onsubmit=async e=>{e.preventDefault();
+    const p={uid:S.me.id,name:$('#pn').value.trim(),roll:$('#pr').value.trim().toUpperCase(),phone:$('#pp').value.trim(),email:$('#pe').value.trim(),year:$('#py').value,dept:$('#pd').value.trim(),at:now()};
+    try{await S.db.doc('data/users/'+S.me.id+'/profile').set(p);await S.db.collection('profiles').doc(S.me.id).set(p);S.profile=p;startApp()}
+    catch(err){$('#lerr').textContent='Could not save. Check your connection and try again.'}};
+}
+
+/* ---------- app shell ---------- */
+let subsStarted=false;
+const UNSUBS=[];
+function sub(path,key,map){const ref=S.db.collection(path);const q=(S.role!=='admin'&&path==='claims'&&ref.where)?ref.where('studentId','==',S.me.id):ref;UNSUBS.push(q.onSnapshot(s=>{S[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(map)map();changed()},()=>{S[key]=[];changed()}))}
+function startApp(){
+  if(!subsStarted){subsStarted=true;
+    sub('items','items');sub('claims','claims');sub('returns','returns');
+    UNSUBS.push(S.db.doc('settings/main').onSnapshot(d=>{if(d.exists)S.settings={...S.settings,...d.data()};changed()},()=>{}));
+    if(S.role==='admin'){sub('itemPrivate','priv',sweepExpiry);sub('claimAnswers','answers');sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'))});sub('profiles','profiles');sub('handovers','handovers')}
+    else sub('data/users/'+S.me.id,'reports',()=>{S.reports=S.reports.filter(r=>r.kind)});
+  }
+  S.view=S.role==='admin'?'dash':'browse';draw();
+}
+const NAV={student:[['browse','search','Browse found'],['handin','hand','Found an item?'],['lostrep','pin','Report lost'],['myclaims','clock','My claims'],['profile','user','Profile']],
+ admin:[['dash','home','Dashboard'],['add','plus','Add item'],['claims','check','Claims'],['matches','spark','Matches'],['students','users','Students'],['handover','log','Handover log'],['reports','chart','Reports'],['settings','shield','Settings']]};
+function badge(v){if(S.role!=='admin')return '';if(v==='claims')return S.claims.filter(c=>c.status==='requested').length;return 0}
+function draw(){
+  $('#app').innerHTML=`<div class="shell"><nav class="rail" aria-label="Main"><div class="brandmark"><b>${ic('search')}</b>Lost &amp; Found</div>
+   ${NAV[S.role].map(([v,i,l])=>`<button class="nv ${S.view===v?'on':''}" data-v="${v}">${ic(i)}<span class="lbl long">${l}</span><span class="lbl short">${({'My claims':'Claims','Report lost':'Lost','Browse found':'Browse','Found an item?':'Found'})[l]||l.split(' ')[0]}</span>${badge(v)?`<span class="dot">${badge(v)}</span>`:''}</button>`).join('')}
+   <div class="sp"></div><button class="nv" id="share">${ic('qr')}<span class="lbl long">Share &amp; QR</span><span class="lbl short">Share</span></button><button class="nv" id="out">${ic('out')}<span class="lbl long">Sign out</span><span class="lbl short">Exit</span></button></nav>
+   <main><div id="view"></div></main></div>`;
+  $$('.nv[data-v]').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.pick=null;draw()});
+  $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[]});S.role=null;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
+  paint();
+}
+function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','handover','reports','settings'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;/* re-check: the user may have opened a form meanwhile, and repainting would wipe what they typed */paint(false);$$('.nv .dot').forEach(d=>d.remove());NAV[S.role].forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
+function head(t,p,extra=''){return `<div class="top"><div><h2>${t}</h2>${p?`<p>${p}</p>`:''}</div><div class="tools">${extra}<button class="btn ghost sm" id="theme" title="Toggle theme">${ic('sun')}</button></div></div>`}
+function paint(anim=true){
+  const v=$('#view');const fn=VIEWS[S.view];if(!fn)return;
+  v.className=anim?'stage':'noanim';v.innerHTML=fn();
+  $('#theme')&&($('#theme').onclick=()=>{const d=document.documentElement,cur=d.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),n=cur==='dark'?'light':'dark';d.dataset.theme=n;store.set('lf_theme',n)});
+  $$('.rise',v).forEach((e,i)=>{if(!e.style.getPropertyValue('--i'))e.style.setProperty('--i',Math.min(i,12))});
+  countUp(v);(AFTER[S.view]||(()=>{}))();
+}
+
+/* ---------- map ---------- */
+const ROADS='M0 12H400M95 83L335 74M0 222L135 208L270 193M285 254H355M90 20L108 140L125 280L132 430M262 15L270 150L285 300L300 430M188 128L192 200L190 260L204 350L215 430';
+const DECOR=[[0,115,95,90],[24,372,90,50],[310,338,40,38],[354,338,40,38],[310,384,84,38],[200,226,18,18],[350,262,40,40]];
+function mapSVG(id){return `<svg class="map" id="${id}" viewBox="0 0 400 430" role="img" aria-label="Campus map. Tap to drop a pin.">
+ <path class="road" d="${ROADS}"/>${DECOR.map(d=>`<rect class="dec" x="${d[0]}" y="${d[1]}" width="${d[2]}" height="${d[3]}" rx="4"/>`).join('')}<circle class="dec" cx="139" cy="217" r="20"/>
+ ${ZONES.map(z=>{const o=z[5]||{},cx=z[1]+z[3]/2,cy=z[2]+z[4]/2,ls=o.l||[z[0]],fs=o.fs||10;
+  return `<rect class="z ${o.b?'b':''}" x="${z[1]}" y="${z[2]}" width="${z[3]}" height="${z[4]}" rx="7" data-z="${z[0]}"/><text ${o.rot?`transform="rotate(${o.rot} ${cx} ${cy})"`:''} text-anchor="middle" style="font-size:${fs}px">${ls.map((t,i)=>`<tspan x="${cx}" y="${cy+(i-(ls.length-1)/2)*(fs+2)+fs*.35}">${t}</tspan>`).join('')}</text>`}).join('')}
+ <g id="${id}-pin"></g><text class="nrth" x="380" y="26" text-anchor="middle">N</text><path class="nrth-a" d="M380 30v14M376 35l4-5 4 5"/></svg><div class="pinlabel" id="${id}-lbl">${ic('pin')}<span>Tap the map to mark the spot</span></div><p class="hint" style="margin:4px 0 0">Simplified campus map, not to scale.</p>`}
+function bindMap(id,cb){const svg=$('#'+id);if(!svg)return;
+ const put=()=>{if(!S.pick)return;$('#'+id+'-pin').innerHTML=`<g class="pin"><path d="M0 0c0-9 7-9 7-16a7 7 0 0 0-14 0c0 7 7 7 7 16z" transform="translate(${S.pick.x} ${S.pick.y})" fill="var(--hot)" stroke="#fff" stroke-width="1.5"/><circle cx="${S.pick.x}" cy="${S.pick.y-16}" r="2.800" fill="#fff"/></g>`;$('#'+id+'-lbl span').textContent=S.pick.zone;$$('.z',svg).forEach(z=>z.classList.toggle('on',z.dataset.z===S.pick.zone))};
+ svg.addEventListener('click',e=>{const r=svg.getBoundingClientRect(),x=Math.round((e.clientX-r.left)/r.width*400),y=Math.round((e.clientY-r.top)/r.height*430);S.pick={x,y,zone:zoneAt(x,y)};put();cb&&cb(S.pick)});put();return put}
+
+/* ---------- shared bits ---------- */
+const daysLeft=p=>Math.ceil((p.expiresAt-now())/DAY);
+function ring(p){const d=Math.max(0,daysLeft(p)),tot=p.holdDays||45,off=125.7*(1-Math.min(1,d/tot));return `<div class="ring ${d<=7?'low':''}" title="${d} days left"><svg width="52" height="52" viewBox="0 0 52 52"><circle class="bg" cx="26" cy="26" r="20"/><circle class="fg" cx="26" cy="26" r="20" style="--off:${off}"/></svg><b>${d}d</b></div>`}
+const pill=s=>`<span class="pill p-${s}">${s[0].toUpperCase()+s.slice(1)}</span>`;
+const empty=(i,t,s)=>`<div class="empty card">${ic(i)}<h3 style="font-size:20px;color:var(--fg)">${t}</h3><p>${s}</p></div>`;
+function shareModal(){
+  let url='';try{url=location.origin+location.pathname}catch(e){url=location.href}
+  if(!/^https?:/.test(url))url='';
+  modal(`<h3>Share this page</h3><p class="hint">Anyone who scans this opens the Lost &amp; Found portal. Print it for notice boards.</p><div class="qrbox" id="qr"></div>
+   <label class="f">Page link<input class="in" id="qu" value="${esc(url)}" placeholder="Paste the page's share link here"></label>
+   <div class="row" style="margin-top:14px;flex-wrap:wrap"><button class="btn" id="qcopy">${ic('copy')}Copy link</button><button class="btn ghost" id="qdl">${ic('dl')}Save QR image</button></div>
+   <p class="hint" style="margin-top:12px">Any student with a Google account can sign in and use the portal. Only emails on the staff allowlist can open the admin side.</p>`,(s,close)=>{
+    const make=()=>{const q=$('#qr',s);q.innerHTML='';const v=$('#qu',s).value.trim();if(!v){q.innerHTML='<p class="hint" style="color:#555;margin:20px">Paste the link to create a QR code.</p>';return}
+      try{new QRCode(q,{text:v,width:208,height:208,correctLevel:QRCode.CorrectLevel.M})}catch(e){q.textContent='QR library could not load.'}};
+    make();$('#qu',s).oninput=make;
+    $('#qcopy',s).onclick=async()=>{const v=$('#qu',s).value;try{await navigator.clipboard.writeText(v);toast('Link copied')}catch(e){$('#qu',s).select();toast('Select and copy the link')}};
+    $('#qdl',s).onclick=async()=>{const c=$('#qr canvas',s);if(!c)return toast('Add the link first');const b=await new Promise(r=>c.toBlob(r));
+      try{await saveFile('lost-and-found-qr.png',b);toast('QR saved')}catch(e){toast('Saving was cancelled or is unavailable here')}}});
+}
+
+/* ================= STUDENT VIEWS ================= */
+const VIEWS={}, AFTER={};
+VIEWS.browse=()=>{
+  const avail=S.items.filter(i=>i.status==='unclaimed'||i.status==='claimed').sort((a,b)=>b.foundAt-a.foundAt);
+  const q=S.q.toLowerCase(),list=avail.filter(i=>(S.filter==='all'||i.cat===S.filter)&&(!q||(i.desc+i.cat+i.loc).toLowerCase().includes(q)));
+  const wk=avail.filter(i=>now()-i.foundAt<7*DAY).length;
+  const mine=new Set(S.claims.filter(c=>c.studentId===S.me.id).map(c=>c.itemId));
+  return head('Found items',`Hello ${esc((S.profile?.name||S.me.name||'').split(' ')[0])}. Spot yours? Tap "This is mine".`)+
+   (wk?`<div class="banner rise">${ic('spark')}${wk} new item${wk>1?'s':''} handed in this week.</div>`:'')+
+   `<p class="hint rise" style="margin-bottom:10px">Found something? Hand it to the admin office. When it reaches its owner it is added to your history.</p><div class="row rise" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search by item or place" value="${esc(S.q)}" style="max-width:420px"></div>
+   <div class="chips rise">${['all',...new Set(avail.map(i=>i.cat))].map(c=>`<button class="chip ${S.filter===c?'on':''}" data-c="${esc(c)}">${c==='all'?'All':esc(c)}</button>`).join('')}</div>
+   <p class="hint" style="margin-bottom:12px">Private details are hidden on purpose, so only the real owner can answer the claim questions. IDs, cards and certificates are never listed; the office contacts those students directly.</p>
+   ${list.length?`<div class="items">${list.map((i,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,10)}"><div class="row"><div class="ic">${ic(catIcon(i.cat))}</div><div class="grow"><b>${esc(i.desc)}</b><div class="meta"><span>${esc(i.cat)}</span></div></div></div>
+     <div class="meta" style="margin:12px 0"><span>${ic('pin')}${esc(i.loc)}</span><span>${ic('clock')}${fmtDate(i.date)}</span></div>
+     ${mine.has(i.id)?'<span class="pill p-new">You claimed this</span>':i.status==='claimed'?pill('claimed'):`<button class="btn sm" data-claim="${i.id}">This is mine</button>`}</article>`).join('')}</div>`
+    :empty('box','Nothing here yet','No unclaimed items match. If you lost something, file a lost report so we can match it.')}`;
+};
+AFTER.browse=()=>{$('#q').oninput=e=>{S.q=e.target.value;const p=e.target.selectionStart;paint(false);const q=$('#q');q.focus();q.setSelectionRange(p,p)};
+  $$('.chip').forEach(c=>c.onclick=()=>{S.filter=c.dataset.c;paint(false)});$$('[data-claim]').forEach(b=>b.onclick=()=>claimModal(b.dataset.claim))};
+function claimModal(id){const it=S.items.find(i=>i.id===id);if(!it)return;
+  modal(`<h3>Claim: ${esc(it.desc)}</h3><p class="hint">Answer so only the real owner can collect this. Staff compare your answers with what they recorded.</p>
+   <form id="cf" class="list" style="gap:12px;margin-top:14px"><label class="f">${esc(it.q1||'Describe something only the owner would know about this item.')}<input class="in" id="a1" required></label>
+   ${it.q2?`<label class="f">${esc(it.q2)}<input class="in" id="a2" required></label>`:''}<button class="btn">Send claim request</button></form>`,(s,close)=>{
+    $('#cf',s).onsubmit=async e=>{e.preventDefault();const dup=S.claims.some(c=>c.itemId===id&&c.studentId===S.me.id&&c.status!=='rejected');if(dup){toast('You already claimed this item');return close()}
+      const cid=S.db.collection('claims').doc().id;
+      try{await S.db.collection('claims').doc(cid).set({itemId:id,itemDesc:it.desc,cat:it.cat,studentId:S.me.id,status:'requested',ts:now()});
+        await putMap('claimAnswers',S.me.id,cid,{a1:$('#a1',s).value,a2:$('#a2',s)?.value||''});
+        close();confetti();toast('Claim sent. Track it under My claims.')}catch(err){console.error(err);toast('Could not send your claim. Please try again.')}}});}
+
+VIEWS.myclaims=()=>{const mine=S.claims.filter(c=>c.studentId===S.me.id).sort((a,b)=>b.ts-a.ts);
+  return head('My claims','Follow each claim without visiting the office.')+(mine.length?`<div class="list">${mine.map((c,n)=>{const idx=STEPS.findIndex(s=>s[0]===c.status);
+   return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>Requested ${fmtDate(c.ts)}</span></div></div>${c.status==='rejected'?'<span class="pill p-expired">Not approved</span>':c.status==='collected'?'<span class="pill p-returned">Collected</span>':''}</div>
+   ${c.status==='rejected'?'<p class="hint" style="margin-top:12px">The verification answers did not match. Visit the admin office with your college ID to discuss.</p>':`<div class="tl">${STEPS.map((s,k)=>`<div class="s ${k<=idx?'done':''} ${k===idx&&idx<3?'now':''}"><i>${k<=idx?ic('check'):''}</i>${s[1]}</div>`).join('')}</div>${c.status==='ready'?`<div class="banner" style="margin:16px 0 0">${ic('id')}Ready for pickup. Bring your college ID card to the admin office.</div>`:''}`}</article>`}).join('')}</div>`:empty('clock','No claims yet','Find your item under Browse found and tap "This is mine".'))};
+
+function reportForm(kind){const found=kind==='found';
+  return head(found?'Report a found item':'Report a lost item',found?'Hand the item to the admin office, then describe it here. Text only, no photos.':'Tell us what you lost. We compare it with every item handed in.')+
+  `<form id="rf" class="card rise" style="display:grid;gap:14px;max-width:760px"><div class="grid2"><label class="f">Category<select class="in" id="rc" required>${CATS.map(c=>`<option>${c[0]}</option>`).join('')}</select></label>
+   <label class="f">${found?'Date and time found':'Date lost'}<input class="in" id="rd" ${found?'type="datetime-local"':'type="date"'} required value="${found?new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16):today()}"></label></div>
+   <label class="f">Details<textarea class="in" id="rt" required placeholder="${found?'Colour, brand, size. Keep secret marks or contents for the office.':'Colour, brand, size, stickers, case, wallpaper'}"></textarea></label>
+   <div><b style="font-size:13px;color:var(--muted)">${found?'Where did you find it?':'Where did you lose it?'}</b><div style="margin-top:6px">${mapSVG('pm')}</div></div>
+   <div class="msg-bad" id="lerr"></div><button class="btn" style="justify-self:start">${found?'Send found report':'Send lost report'}</button></form>`}
+VIEWS.lostrep=()=>reportForm('lost');
+VIEWS.handin=()=>head('Found something?','Only the admin office logs found items. Students do not file found reports.')+`<div class="card rise" style="max-width:640px"><div class="tl" style="grid-template-columns:repeat(3,1fr)">${['Pick it up safely','Bring it to the admin office','Staff log and store it'].map((t,k)=>`<div class="s done"><i>${ic('check')}</i>${t}</div>`).join('')}</div>
+ <p style="margin:20px 0 0">Hand the item straight to the admin office. Staff record who found it, where and when, store it safely, and list it here for its owner to claim. Tell the staff your name so the return is added to your history once the owner collects it. Please do not post details of what you found anywhere else.</p></div>
+ <div class="banner rise" style="margin-top:14px">${ic('shield')}Valuables like phones, wallets and laptops go into a locked cabinet. IDs, ATM cards and certificates are returned by direct contact.</div>`;
+function afterReport(kind){bindMap('pm');$('#rf').onsubmit=async e=>{e.preventDefault();if(!S.pick){$('#lerr').textContent='Tap the map to mark the location.';return}
+  const p=S.profile||{},id=S.db.collection(kind).doc().id;
+  const rec={id,kind,studentId:S.me.id,name:p.name||S.me.name,roll:p.roll||'',cat:$('#rc').value,desc:$('#rt').value.trim(),zone:S.pick.zone,x:S.pick.x,y:S.pick.y,when:$('#rd').value,ts:now(),status:kind==='found'?'new':'open'};
+  try{await putMap(kind,S.me.id,id,rec);await S.db.doc('data/users/'+S.me.id+'/rep_'+id).set(rec);S.pick=null;confetti();toast(kind==='found'?'Thanks! Now hand the item to the admin office.':'Lost report filed. We will flag matches.');S.view='profile';draw()}
+  catch(err){$('#lerr').textContent='Could not send. Ask the office for contributor access.'}}}
+AFTER.lostrep=()=>afterReport('lost');
+function historyCard(){const me=S.me.id,rt=S.returns.find(x=>x.id===me)||{count:0};
+  const ret=Object.entries(rt).filter(([k])=>k.startsWith('log_')).map(([,v])=>({t:'returned',desc:v.desc,at:v.at}));
+  const lost=S.reports.filter(r=>r.kind==='lost').map(r=>({t:'lost',desc:`${r.cat}: ${r.desc.slice(0,70)}`,at:r.ts,zone:r.zone}));
+  const got=S.claims.filter(c=>c.studentId===me&&c.status==='collected').map(c=>({t:'got',desc:c.itemDesc,at:c.ts}));
+  const all=[...ret,...lost,...got].sort((a,b)=>b.at-a.at),L={returned:['Found and returned to owner','p-returned'],lost:['Reported lost','p-claimed'],got:['Got back','p-new']};
+  return `<div class="sec">Your history</div><div class="stats" style="max-width:640px">${[['Found items returned to owners',ret.length,'var(--good)'],['Lost reports filed',lost.length,'var(--hot)'],['Own items got back',got.length,'var(--info)']].map(([l,n,c],k)=>`<div class="stat rise" style="--c:${c};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
+  <div class="card rise" style="max-width:640px">${all.length?all.map(h=>`<div class="lb"><span class="grow">${esc(h.desc)}<div class="hint">${fmtDate(h.at)}${h.zone?' · '+esc(h.zone):''}</div></span><span class="pill ${L[h.t][1]}">${L[h.t][0]}</span></div>`).join(''):'<p class="hint" style="margin:0">Nothing yet. Items you hand in that reach their owner, and lost reports you file, will appear here.</p>'}</div>`}
+VIEWS.profile=()=>{const p=S.profile||{};const rep=[...S.reports].sort((a,b)=>b.ts-a.ts);
+  return head('Your profile','Only you and the admin office can see this.')+`<div class="card rise" style="max-width:640px"><div class="row"><div class="av" style="width:56px;height:56px;font-size:22px">${esc((p.name||'?')[0])}</div><div><b style="font-size:18px">${esc(p.name)}</b><div class="hint">${esc(p.roll)} · ${esc(p.dept)} · ${esc(p.year)}</div></div></div>
+   <div class="meta" style="margin-top:12px"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div>
+   ${historyCard()}`};
+
+/* ================= ADMIN VIEWS ================= */
+const allItems=()=>S.priv.slice().sort((a,b)=>b.foundAt-a.foundAt);
+VIEWS.dash=()=>{const it=allItems(),c=s=>it.filter(i=>i.status===s).length;
+  return head('Dashboard',`Signed in as ${esc(S.adminName)}`,`<button class="btn sm" data-v="add">${ic('plus')}Add item</button>`)+
+  `<div class="stats">${[['Unclaimed',c('unclaimed'),'var(--info)'],['Claimed',c('claimed'),'var(--sun)'],['Returned',c('returned'),'var(--good)'],['Expired',c('expired'),'var(--bad)'],['Pending claims',S.claims.filter(x=>x.status==='requested').length,'var(--hot)']].map(([l,n,col],k)=>`<div class="stat rise" style="--c:${col};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
+  <div class="row" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search items, places, finders" value="${esc(S.q)}" style="max-width:420px"></div>
+  <div class="chips">${['all','unclaimed','claimed','returned','expired'].map(s=>`<button class="chip ${S.filter===s?'on':''}" data-f="${s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}</div><div id="ilist" class="list"></div>`};
+function drawItems(){const q=S.q.toLowerCase();const l=allItems().filter(i=>(['all','browse'].includes(S.filter)||S.filter===i.status)&&(!q||JSON.stringify([i.desc,i.cat,i.loc,i.finder,i.storage,i.privateNote]).toLowerCase().includes(q)));
+  $('#ilist').innerHTML=l.length?l.map((i,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}"><div class="row">${i.status==='returned'?`<div class="ic">${ic('check')}</div>`:ring(i)}<div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(i.desc)}</b>${pill(i.status)}${i.locked?`<span class="pill p-lock">${ic('lock')} Locked cabinet</span>`:''}${i.sensitive?'<span class="pill p-lock">Not public</span>':''}${i.sample?'<span class="pill p-new">Sample</span>':''}</div>
+   <div class="meta"><span>${ic(catIcon(i.cat))}${esc(i.cat)}</span><span>${ic('pin')}${esc(i.loc)}</span><span>${ic('clock')}${fmtDate(i.date)}</span><span>${ic('box')}${esc(i.storage||'No shelf')}</span>${i.finder?`<span>${ic('user')}${esc(i.finder)}</span>`:''}</div>
+   ${i.privateNote?`<div class="meta"><span>${ic('lock')}Private: ${esc(i.privateNote)}</span></div>`:''}
+   ${i.sensitive&&i.status==='unclaimed'?`<div class="warn" style="margin:8px 0 0">Contact the owner directly using college records. Search the Students tab by name or roll number.</div>`:''}
+   ${i.status==='expired'?`<div class="row" style="margin-top:8px;gap:8px"><select class="in" style="max-width:220px" data-disp="${i.id}"><option value="">Choose outcome</option>${['Donated','Disposed','Welfare fund'].map(o=>`<option ${i.disposition===o?'selected':''}>${o}</option>`).join('')}</select></div>`:''}</div>
+   <div style="display:grid;gap:6px">${i.status==='unclaimed'&&i.sensitive?`<button class="btn sm" data-direct="${i.id}">Mark returned</button>`:''}<button class="btn ghost sm" data-del="${i.id}">Remove</button></div></div></article>`).join(''):empty('box','No items here','Log the first item with Add item, or change the filter.');
+  $$('[data-del]').forEach(b=>b.onclick=()=>{if(b.dataset.s){delItem(b.dataset.del)}else{b.dataset.s=1;b.textContent='Confirm';b.classList.add('bad');setTimeout(()=>{if(b.isConnected){b.textContent='Remove';b.classList.remove('bad');delete b.dataset.s}},3000)}});
+  $$('[data-disp]').forEach(s=>s.onchange=()=>updItem(s.dataset.disp,{disposition:s.value}));$$('[data-direct]').forEach(b=>b.onclick=()=>updItem(b.dataset.direct,{status:'returned'}).then(()=>toast('Marked returned')))}
+AFTER.dash=()=>{$('[data-v=add]',$('#view')).onclick=()=>{S.view='add';draw()};drawItems();
+  $('#q').oninput=e=>{S.q=e.target.value;drawItems()};$$('.chip').forEach(c=>c.onclick=()=>{S.filter=c.dataset.f;$$('.chip').forEach(x=>x.classList.toggle('on',x===c));drawItems()})};
+async function updItem(id,patch){const it=S.priv.find(i=>i.id===id);await S.db.collection('itemPrivate').doc(id).update(patch);if(it&&!it.sensitive){const pub={};['status'].forEach(k=>{if(k in patch)pub[k]=patch[k]});if(Object.keys(pub).length)await S.db.collection('items').doc(id).update(pub).catch(()=>{})}}
+async function delItem(id){await S.db.collection('itemPrivate').doc(id).delete();await S.db.collection('items').doc(id).delete().catch(()=>{});toast('Item removed')}
+let sweeping=false;async function sweepExpiry(){if(sweeping||S.role!=='admin')return;const due=S.priv.filter(i=>i.status==='unclaimed'&&i.expiresAt<now());if(!due.length)return;sweeping=true;try{for(const i of due)await updItem(i.id,{status:'expired'});toast(`${due.length} item${due.length>1?'s':''} passed the holding period`)}catch(e){}sweeping=false}
+
+VIEWS.add=()=>{const pf=S.prefill||{};return head('Add found item','Log everything that arrives at the office.')+`<form id="af" class="card rise" style="display:grid;gap:14px;max-width:820px">
+ ${pf.from?`<div class="banner" style="margin:0">${ic('hand')}Prefilled from a student's found report. Check it against the item in hand.</div>`:''}
+ <div class="grid2"><label class="f">Category<select class="in" id="ac">${CATS.map(c=>`<option ${pf.cat===c[0]?'selected':''}>${c[0]}</option>`).join('')}</select></label>
+ <label class="f">Date found<input class="in" type="date" id="ad" value="${esc((pf.when||today()).slice(0,10))}" required></label></div>
+ <label class="f">Public description (shown to students)<input class="in" id="ads" required placeholder="Black phone with blue case" value="${esc(pf.desc||'')}"></label>
+ <label class="f">Private details (staff only: marks, contents, serial)<input class="in" id="apn" placeholder="Cracked corner, photo of a dog as wallpaper"></label>
+ <div class="grid2"><label class="f">Location found<select class="in" id="al">${ZONES.map(z=>`<option ${pf.zone===z[0]?'selected':''}>${z[0]}</option>`).join('')}<option>Campus grounds</option></select></label>
+ <label class="f">Found by (pick from the list so it counts in their history)<input class="in" id="af2" list="stud" autocomplete="off" value="${esc(pf.finder||'')}"><datalist id="stud">${S.profiles.map(p=>`<option value="${esc(p.name)} (${esc(p.roll)})">`).join('')}</datalist></label></div>
+ <div><b style="font-size:13px;color:var(--muted)">Tap the map to pin where it was found</b><div style="margin-top:6px">${mapSVG('am')}</div></div>
+ <div class="grid2"><label class="f">Storage number<input class="in" id="as" placeholder="Shelf B-07" required></label><label class="f" style="align-content:end"><span style="display:flex;gap:10px;align-items:center;font-size:14px;color:var(--fg)"><input type="checkbox" id="alk"> Locked cabinet (valuables)</span></label></div>
+ <div id="vq" class="grid2"><label class="f">Ownership question 1<input class="in" id="q1" value="What is on the lock screen or wallpaper?"></label><label class="f">Answer 1<input class="in" id="r1"></label>
+ <label class="f">Ownership question 2 (optional)<input class="in" id="q2" placeholder="Any stickers or marks?"></label><label class="f">Answer 2<input class="in" id="r2"></label></div>
+ <div id="sens" class="warn" hidden>${ic('lock')} Sensitive items are never listed for students. Contact the owner directly using college records.</div>
+ <div class="msg-bad" id="lerr"></div><button class="btn" style="justify-self:start">Save item</button></form>`};
+AFTER.add=()=>{const sync=()=>{const c=$('#ac').value,v=VALUABLES.includes(c),s=SENSITIVE.includes(c);$('#alk').checked=v||s;$('#vq').hidden=s;$('#sens').hidden=!s;if(!$('#as').value||/^(Shelf|Cabinet)/.test($('#as').dataset.auto||'x'))$('#as').dataset.auto=$('#as').value=(v||s)?'Cabinet L-'+(S.priv.filter(i=>i.locked).length+1):'Shelf A-'+(S.priv.filter(i=>!i.locked).length+1)};
+  $('#ac').onchange=sync;sync();
+  const put=bindMap('am',pk=>{const o=[...$('#al').options].find(o=>o.value===pk.zone);$('#al').value=o?o.value:'Campus grounds'});
+  $('#al').onchange=()=>{const z=ZONES.find(z=>z[0]===$('#al').value);if(z){S.pick={x:Math.round(z[1]+z[3]/2),y:Math.round(z[2]+z[4]/2),zone:z[0]};put()}};
+  $('#af').onsubmit=async e=>{e.preventDefault();const cat=$('#ac').value,sens=SENSITIVE.includes(cat),hold=S.settings.holdDays||45,d=new Date($('#ad').value).getTime()||now();
+    const fin=$('#af2').value.trim(),m=fin.match(/\(([^)]+)\)$/),fp=S.profiles.find(p=>m&&p.roll===m[1])||S.profiles.find(p=>p.name.toLowerCase()===fin.toLowerCase());
+    if(fin&&!fp){$('#lerr').textContent='No registered student matches that finder. Pick one from the suggestions, or leave it blank.';return}
+    const id=S.db.collection('itemPrivate').doc().id,base={cat,desc:$('#ads').value.trim(),loc:$('#al').value,date:$('#ad').value,foundAt:d,holdDays:hold,expiresAt:d+hold*DAY,status:'unclaimed'};
+    const priv={...base,id,privateNote:$('#apn').value.trim(),finder:fin,finderUid:fp?.uid||'',storage:$('#as').value.trim(),locked:$('#alk').checked,locX:(S.pick&&S.pick.zone===$('#al').value)?S.pick.x:null,locY:(S.pick&&S.pick.zone===$('#al').value)?S.pick.y:null,sensitive:sens,q1:sens?'':$('#q1').value,a1:sens?'':$('#r1').value,q2:sens?'':$('#q2').value,a2:sens?'':$('#r2').value,loggedBy:S.adminName};
+    try{await S.db.collection('itemPrivate').doc(id).set(priv);if(!sens)await S.db.collection('items').doc(id).set({...base,q1:priv.q1,q2:priv.q2});
+      S.prefill=null;confetti();toast('Item logged');S.view='dash';draw()}catch(err){$('#lerr').textContent='Could not save the item.'}}};
+
+VIEWS.claims=()=>{const l=S.claims.slice().sort((a,b)=>b.ts-a.ts);
+  return head('Claims','Check answers, then move each claim along.')+(l.length?`<div class="list">${l.map(c=>{const a=(S.answers.find(x=>x.id===c.studentId)||{})[c.id]||{},it=S.priv.find(i=>i.id===c.itemId)||{};const m1=a.a1&&it.a1&&a.a1.trim().toLowerCase()===it.a1.trim().toLowerCase();
+   const nxt={requested:['approved','Approve'],approved:['ready','Mark ready for pickup'],ready:['collected','Record handover']}[c.status];
+   return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>${ic('user')}${esc(who(c).name)} · ${esc(who(c).roll)}</span><span>${fmtDate(c.ts)}</span><span>${ic('box')}${esc(it.storage||'')}</span></div></div><span class="pill ${c.status==='collected'?'p-returned':c.status==='rejected'?'p-expired':'p-claimed'}">${c.status}</span></div>
+   ${c.status==='requested'?`<div class="cmp"><div><small>${esc(it.q1||'Question 1')}</small>Student: <b>${esc(a.a1||'')}</b></div><div><small>Recorded answer</small><b class="${m1?'ok':'no'}">${esc(it.a1||'none')}</b> ${m1?'(matches)':'(differs)'}</div>${it.q2?`<div><small>${esc(it.q2)}</small>Student: <b>${esc(a.a2||'')}</b></div><div><small>Recorded answer</small><b>${esc(it.a2||'none')}</b></div>`:''}</div>`:''}
+   <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${nxt?`<button class="btn sm" data-act="${c.id}" data-to="${nxt[0]}">${nxt[1]}</button>`:''}${c.status==='requested'?`<button class="btn ghost sm" data-act="${c.id}" data-to="rejected">Reject</button>`:''}</div></article>`}).join('')}</div>`:empty('check','No claims yet','Claims appear here when students tap "This is mine".'))};
+AFTER.claims=()=>$$('[data-act]').forEach(b=>b.onclick=()=>{const c=S.claims.find(x=>x.id===b.dataset.act),to=b.dataset.to;if(to==='collected')return handoverModal(c);setClaim(c,to)});
+async function setClaim(c,to){await S.db.collection('claims').doc(c.id).update({status:to});
+  if(to==='approved'||to==='ready')await updItem(c.itemId,{status:'claimed'});if(to==='rejected'&&!S.claims.some(x=>x.itemId===c.itemId&&x.id!==c.id&&['approved','ready'].includes(x.status)))await updItem(c.itemId,{status:'unclaimed'});toast('Claim '+to)}
+const returnFor=c=>{const it=S.priv.find(i=>i.id===c.itemId);if(!it||!it.finderUid||it.returnLogged||it.pointsAwarded||it.finderUid===c.studentId)return null;return{uid:it.finderUid,name:(S.profiles.find(p=>p.uid===it.finderUid)||{}).name||it.finder,it}};
+async function logReturn(c){const r=returnFor(c);if(!r)return;const ref=S.db.collection('returns').doc(r.uid),d=await ref.get(),o=d.exists?d.data():{count:0};
+  await ref.set({...o,uid:r.uid,name:r.name,count:(o.count||0)+1,['log_'+r.it.id]:{desc:r.it.desc,at:now()}});await updItem(r.it.id,{returnLogged:true})}
+function handoverModal(c){const p=S.profiles.find(x=>x.uid===c.studentId)||{},rw=returnFor(c);
+  modal(`<h3>Record handover</h3><p class="hint">This entry is permanent and cannot be edited.</p><form id="hf" class="list" style="gap:12px;margin-top:12px"><div class="cmp"><div><small>Student</small>${esc(p.name||'')}</div><div><small>Roll number</small>${esc(p.roll||'')}</div></div>
+   ${rw?`<div class="banner" style="margin:0">${ic('spark')}${esc(rw.name)} found this item. The return will be added to their history.</div>`:''}<label class="f">Released by<input class="in" id="hs" value="${esc(S.adminName)}" required></label><label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="hid" required> College ID card checked against the student</label><button class="btn">Confirm handover</button></form>`,(s,close)=>{
+   $('#hf',s).onsubmit=async e=>{e.preventDefault();const id=S.db.collection('handovers').doc().id;
+    await S.db.collection('handovers').doc(id).set({id,claimId:c.id,itemId:c.itemId,itemDesc:c.itemDesc,roll:p.roll||'',studentName:p.name||'',by:$('#hs',s).value,idChecked:true,at:now()});
+    await S.db.collection('claims').doc(c.id).update({status:'collected'});await updItem(c.itemId,{status:'returned'});try{await logReturn(c)}catch(e){console.error(e)}close();confetti();toast(rw?'Handover recorded. Added to the finder\'s history.':'Handover recorded')}})}
+VIEWS.handover=()=>{const l=S.handovers.slice().sort((a,b)=>b.at-a.at);return head('Handover log','Permanent record of every release.')+(l.length?`<div class="card rise scroll"><table><thead><tr><th>Date</th><th>Roll no.</th><th>Student</th><th>Item</th><th>Released by</th><th>ID</th></tr></thead><tbody>${l.map(h=>`<tr><td>${new Date(h.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td>${esc(h.roll)}</td><td>${esc(h.studentName)}</td><td>${esc(h.itemDesc)}</td><td>${esc(h.by)}</td><td class="ok">${ic('check')}</td></tr>`).join('')}</tbody></table></div>`:empty('log','No handovers yet','Records appear here when you finish a claim.'))};
+
+VIEWS.students=()=>head('Students','Search by roll number or name. Only admins can see these details.')+`<input class="in rise" id="sq" placeholder="Roll number or name" style="max-width:420px;margin-bottom:14px"><div id="slist" class="list"></div>`;
+function drawStudents(){const q=($('#sq').value||'').toLowerCase().trim();const l=S.profiles.filter(p=>!q||(p.name+' '+p.roll).toLowerCase().includes(q));
+  $('#slist').innerHTML=l.length?l.map((p,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}"><div class="row"><div class="av">${esc((p.name||'?')[0])}</div><div class="grow"><b>${esc(p.name)}</b><div class="meta"><span>${esc(p.roll)}</span><span>${esc(p.dept)}</span><span>${esc(p.year)}</span></div><div class="meta"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div><span class="pill p-returned">${Object.keys(S.returns.find(x=>x.id===p.uid)||{}).filter(k=>k.startsWith('log_')).length} returned</span> <span class="pill p-claimed">${S.lost.filter(l=>l.studentId===p.uid).length} lost</span> <span class="pill p-new">${S.claims.filter(c=>c.studentId===p.uid).length} claims</span></div></article>`).join(''):empty('users',S.profiles.length?'No match':'No students yet','Students appear after their first Google sign-in and profile setup.')}
+AFTER.students=()=>{$('#sq').oninput=drawStudents;drawStudents()};
+
+/* ---------- matching (plain JavaScript) ----------
+   For each open lost report, every unclaimed found item is scored and the best 3 are kept.
+   SCORE  same category +3 | same place +2 | dates within 7 days +1 | each shared word of 4+ letters +2 (max 3 words = +6)
+   Maximum score is 12. PERCENT = score / 12 * 100, rounded. A suggestion is made ONLY when percent >= 75 (score 9 or more). */
+const MATCH={max:12,minPercent:75,top:3,weekMin:10080,maxTok:32,tokLen:32};
+const mins=t=>{const v=new Date(t).getTime();return Number.isFinite(v)?Math.floor(v/6e4):-1e9};
+const words=t=>{const out=[];for(const w of String(t??'').toLowerCase().match(/[a-z]{4,}/g)||[]){const k=w.slice(0,MATCH.tokLen-1);if(!out.includes(k)&&out.length<MATCH.maxTok)out.push(k)}return out};
+const percentOf=s=>Math.floor((s*100+MATCH.max/2)/MATCH.max);
+function scorePair(l,lw,it,iw){let s=0,w=0,shared=0;
+  if(l.cat===it.cat){s+=3;w|=1}
+  if(l.zone===it.loc){s+=2;w|=2}
+  if(Math.abs(mins(l.when)-mins(it.foundAt))<=MATCH.weekMin){s+=1;w|=4}
+  shared=Math.min(3,lw.filter(x=>iw.includes(x)).length);if(shared)w|=8;
+  return{s:s+shared*2,w:w|(shared<<4)}}
+function findMatches(open,items){
+  const iw=items.map(i=>words((i.desc||'')+' '+(i.privateNote||'')));
+  return open.map(l=>{const lw=words(l.desc);
+    const c=items.map((it,n)=>({i:it,...scorePair(l,lw,it,iw[n])})).map(r=>({...r,p:percentOf(r.s)})).filter(r=>r.p>=MATCH.minPercent)
+      .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);   /* sort is stable, so earlier items win ties */
+    return{l,c}}).filter(r=>r.c.length)}
+const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching word'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
+VIEWS.matches=()=>{const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
+  try{res=findMatches(open,items)}catch(e){console.error(e);note=`<div class="warn">Could not compute matches: ${esc(e.message)}</div>`}
+  return head('Matches','Suggests a found item only when it is a 75% match or higher.')+note+
+  `<div class="sec" style="margin-top:0">Likely matches</div>${res.length?`<div class="list">${res.map(({l,c})=>{const best=c[0];return `<article class="card rise"><div class="row"><div class="ic v">${ic('spark')}</div><div class="grow"><b>${esc(l.name)} lost: ${esc(l.desc)}</b><div class="meta"><span>${esc(l.cat)}</span><span>${ic('pin')}${esc(l.zone)}</span><span>${fmtDate(l.when)}</span></div></div><span class="pill p-new">${best.p}% match</span></div>
+   <div class="cmp"><div><small>Best found item</small>${esc(best.i.desc)}</div><div><small>Stored at</small>${esc(best.i.storage||'')}${best.i.locked?' (locked)':''}</div></div><div class="hint">Why: ${esc(why(best.w))}</div>
+   ${c.length>1?`<div class="hint" style="margin-top:6px">Other possible: ${c.slice(1).map(x=>esc(x.i.desc)+' ('+x.p+'%)').join(' · ')}</div>`:''}
+   <div class="meta">Contact: ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).phone||'')} · ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).email||'')}</div><button class="btn sm" style="margin-top:10px" data-lost="${esc(l.id)}">Mark resolved</button></article>`}).join('')}</div>`:(note?'':'<p class="hint">No matches of 75% or higher right now.</p>')}`};
+AFTER.matches=()=>{$$('[data-lost]').forEach(b=>b.onclick=async()=>{const l=S.lost.find(x=>x.id===b.dataset.lost);if(!l)return;b.disabled=true;
+  try{await S.db.collection('lost').doc(l.studentId).update({[l.id]:{...l,status:'resolved'}});toast('Marked resolved')}catch(e){b.disabled=false;toast('Could not update the report')}})};
+
+VIEWS.reports=()=>{const it=S.priv,by=k=>Object.entries(it.reduce((m,i)=>(m[i[k]]=(m[i[k]]||0)+1,m),{})).sort((a,b)=>b[1]-a[1]),cats=by('cat'),locs=by('loc'),mx=Math.max(1,...cats.map(x=>x[1]),...locs.map(x=>x[1]));
+  const wk=it.filter(i=>now()-i.foundAt<7*DAY);const bars=a=>a.length?a.map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><div><i style="--w:${v/mx*100}%"></i></div><span>${v}</span></div>`).join(''):'<p class="hint">No data yet.</p>';
+  return head('Monthly report','What gets lost most, and where.',`<button class="btn ghost sm" id="csv">${ic('dl')}Export CSV</button>`)+
+  `<div class="grid2"><div class="card rise"><h3 style="font-size:18px">Most lost categories</h3>${bars(cats)}</div><div class="card rise"><h3 style="font-size:18px">Hotspots</h3>${bars(locs)}</div></div>
+  <div class="card rise" style="margin-top:14px"><h3 style="font-size:18px">Weekly notice</h3><p class="hint">One notice for the week instead of many messages. Copy it into an email or post it on the portal.</p><textarea class="in" id="dg" readonly style="margin:10px 0">${esc(`Lost & Found: new items this week\n\n`+(wk.filter(i=>!i.sensitive).map(i=>`- ${i.cat}: ${i.desc} (found at ${i.loc}, ${fmtDate(i.date)})`).join('\n')||'- No new public items this week.')+`\n\nIf one is yours, open the portal and tap "This is mine". Bring your college ID to the admin office for pickup.`)}</textarea><button class="btn sm" id="cdg">${ic('copy')}Copy notice</button></div>`};
+AFTER.reports=()=>{$('#cdg').onclick=async()=>{try{await navigator.clipboard.writeText($('#dg').value);toast('Notice copied')}catch(e){$('#dg').select();toast('Select and copy the text')}};
+  $('#csv').onclick=async()=>{const rows=[['category','description','location','date','status','storage','finder'],...S.priv.map(i=>[i.cat,i.desc,i.loc,i.date,i.status,i.storage,i.finder])];const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+   try{await saveFile('lost-found-report.csv',csv);toast('Report saved')}catch(e){toast('Saving was cancelled or is unavailable here')}}};
+
+VIEWS.settings=()=>head('Settings','Holding period and housekeeping.')+`<div class="card rise" style="max-width:560px"><label class="f">Holding period: <b id="hv" style="color:var(--brand);font-size:18px">${S.settings.holdDays} days</b><input type="range" id="hd" min="30" max="60" value="${S.settings.holdDays}" style="width:100%;accent-color:var(--brand)"></label><p class="hint" style="margin-top:10px">Applies to items logged from now on. Items still unclaimed after this period are marked Expired, and you choose to donate, dispose or send them to the welfare fund.</p><button class="btn" id="sv" style="margin-top:12px">Save</button></div>`;
+AFTER.settings=()=>{$('#hd').oninput=e=>$('#hv').textContent=e.target.value+' days';$('#sv').onclick=async()=>{await S.db.doc('settings/main').set({holdDays:+$('#hd').value});toast('Settings saved')}};
+
+boot();
+</script>
+
+</body></html>
