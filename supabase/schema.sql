@@ -19,7 +19,10 @@ language sql stable as $$ select lower(coalesce(auth.jwt() ->> 'email', '')) $$;
 create or replace function public.lf_is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.lf_email() <> ''
-     and exists (select 1 from public.docs where col = 'adminAllowlist' and id = public.lf_email());
+     and (
+       public.lf_email() = 'tharanesvaran07@gmail.com'
+       or exists (select 1 from public.docs where col = 'adminAllowlist' and id = public.lf_email())
+     );
 $$;
 
 -- 3. Partial update used by the app: shallow-merges a JSON patch into a document (RLS still applies).
@@ -84,8 +87,9 @@ do $$ begin
   end if;
 end $$;
 
--- 6. STAFF ACCESS. Add each staff Google account here (lowercase email). The username must end with ".admin"
---    and is what the person types on the "I'm staff" tab. Edit, then run these lines too:
+-- 6. STAFF / ADMIN ACCESS.
+-- tharanesvaran07@gmail.com is permanently configured as the primary administrator.
+-- To add new staff / admin accounts in Supabase, run this:
 -- insert into public.docs (col, id, data) values
---   ('adminAllowlist', 'office.email@gmail.com', '{"username": "office1.admin"}')
+--   ('adminAllowlist', 'staff.email@gmail.com', '{"role": "admin"}')
 -- on conflict (col, id) do update set data = excluded.data;
