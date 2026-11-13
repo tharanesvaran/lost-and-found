@@ -106,6 +106,15 @@ class MainActivity : AppCompatActivity() {
         val defaultUa = settings.userAgentString
         settings.userAgentString = defaultUa.replace("; wv", "")
 
+        // Disable swipe-to-refresh whenever user scrolls down so scrolling up scrolls content instead of refreshing
+        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            swipeRefresh.isEnabled = (scrollY <= 0 && !webView.canScrollVertically(-1))
+        }
+
+        webView.viewTreeObserver.addOnScrollChangedListener {
+            swipeRefresh.isEnabled = (webView.scrollY <= 0 && !webView.canScrollVertically(-1))
+        }
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -138,6 +147,7 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 swipeRefresh.isRefreshing = false
+                swipeRefresh.isEnabled = (webView.scrollY <= 0 && !webView.canScrollVertically(-1))
                 errorLayout.visibility = View.GONE
                 webView.visibility = View.VISIBLE
             }
@@ -192,6 +202,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSwipeRefresh() {
         swipeRefresh.setColorSchemeResources(R.color.brand)
+
+        // Only allow refresh trigger when WebView is at the very top and cannot scroll up further
+        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+            webView.canScrollVertically(-1) || webView.scrollY > 0
+        }
+
         swipeRefresh.setOnRefreshListener {
             if (isNetworkAvailable()) {
                 webView.reload()
