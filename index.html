@@ -217,10 +217,20 @@ td{padding:10px 8px;border-top:1px solid var(--line)}
   .bar{grid-template-columns:96px 1fr 28px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+.notif-container{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:380px;width:calc(100% - 32px);pointer-events:none}
+.notif-card{pointer-events:auto;background:var(--surface);border:1px solid var(--brand);box-shadow:0 12px 36px -10px rgba(11,154,137,.35);border-radius:16px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;cursor:pointer;animation:slideDown .3s cubic-bezier(.2,.9,.3,1.2) both}
+.notif-card.out{opacity:0;transform:translateY(-20px);transition:opacity .3s,transform .3s}
+.notif-ic{width:36px;height:36px;border-radius:10px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;flex:none}
+.notif-body{flex:1;min-width:0}
+.notif-body b{display:block;font-size:14px;color:var(--fg);line-height:1.2}
+.notif-body p{margin:4px 0 0;font-size:13px;color:var(--muted);line-height:1.35}
+.notif-close{background:transparent;border:0;font-size:18px;color:var(--muted);cursor:pointer;padding:0 4px}
+@keyframes slideDown{from{opacity:0;transform:translateY(-30px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head><body>
 
 <div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>
+<div id="notif-container" class="notif-container"></div>
 <div id="app"></div>
 <div id="toasts" aria-live="polite"></div>
 <canvas id="fx"></canvas>
@@ -253,6 +263,7 @@ const ICONS={
  shirt:'<path d="m8 3-5 3 2 4 3-1v12h8V9l3 1 2-4-5-3a4 4 0 0 1-8 0z"/>',id:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.5-2 5.500-2 6 0M14 10h4M14 14h3"/>',
  card:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',cert:'<path d="M5 3h14v14H5z"/><path d="M8 8h8M8 12h5M14 21l2-3 2 3v-4"/>',more:'<circle cx="5" cy="12" r="1.500"/><circle cx="12" cy="12" r="1.500"/><circle cx="19" cy="12" r="1.500"/>',
  copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',dl:'<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',
+ bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>',
  spark:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>'};
 const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.more}</svg>`;
 const CATS=[['Phone','phone'],['Wallet','wallet'],['Laptop','laptop'],['Keys','key'],['Bag','bag'],['Water bottle','bottle'],['Books / notes','book'],['Earphones','ear'],['Watch / jewellery','watch'],['Clothing','shirt'],['ID card','id'],['ATM card','card'],['Certificate','cert'],['Other','more']];
@@ -264,6 +275,68 @@ const STEPS=[['requested','Requested'],['approved','Approved'],['ready','Ready']
 
 /* ---------- toast / fx / modal ---------- */
 function toast(t){const el=document.createElement('div');el.className='toast';el.textContent=t;$('#toasts').append(el);setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),400)},2600)}
+
+/* ---------- audio & notifications ---------- */
+let audioCtx=null;
+function playChime(type='match'){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    if(!audioCtx)audioCtx=new AC();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    const t=audioCtx.currentTime;
+    if(type==='alert'){
+      [587.33,880].forEach((freq,i)=>{
+        const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+        osc.type='sine';osc.frequency.setValueAtTime(freq,t+i*0.14);
+        g.gain.setValueAtTime(0.2,t+i*0.14);
+        g.gain.exponentialRampToValueAtTime(0.001,t+i*0.14+0.35);
+        osc.connect(g);g.connect(audioCtx.destination);
+        osc.start(t+i*0.14);osc.stop(t+i*0.14+0.35);
+      });
+    }else{
+      [523.25,659.25,783.99].forEach((freq,i)=>{
+        const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+        osc.type='triangle';osc.frequency.setValueAtTime(freq,t+i*0.12);
+        g.gain.setValueAtTime(0.22,t+i*0.12);
+        g.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.42);
+        osc.connect(g);g.connect(audioCtx.destination);
+        osc.start(t+i*0.12);osc.stop(t+i*0.12+0.42);
+      });
+    }
+  }catch(e){console.warn('playChime:',e)}
+}
+
+function showAppBanner(title,body,onClick){
+  const cnt=$('#notif-container');if(!cnt)return;
+  const card=document.createElement('div');card.className='notif-card';
+  card.innerHTML=`<div class="notif-ic">${ic('bell')}</div><div class="notif-body"><b>${esc(title)}</b><p>${esc(body)}</p></div><button class="notif-close" title="Dismiss" aria-label="Dismiss">&times;</button>`;
+  card.querySelector('.notif-close').onclick=e=>{e.stopPropagation();card.classList.add('out');setTimeout(()=>card.remove(),300)};
+  card.onclick=()=>{onClick&&onClick();card.classList.add('out');setTimeout(()=>card.remove(),300)};
+  cnt.prepend(card);
+  setTimeout(()=>{if(card.isConnected){card.classList.add('out');setTimeout(()=>card.remove(),300)}},9000);
+}
+
+function requestNotificationPermission(){
+  if('Notification' in window&&Notification.permission==='default'){
+    try{Notification.requestPermission()}catch(e){}
+  }
+}
+['click','touchstart'].forEach(e=>document.addEventListener(e,requestNotificationPermission,{once:true}));
+
+function sendNotification(title,body,onClick,type='match'){
+  playChime(type);
+  showAppBanner(title,body,onClick);
+  if(window.AndroidNative&&window.AndroidNative.postNotification){
+    try{window.AndroidNative.postNotification(title,body)}catch(e){}
+  }
+  if('Notification' in window&&Notification.permission==='granted'){
+    try{
+      const n=new Notification(title,{body,icon:'https://lost-and-found-khaki-seven.vercel.app/favicon.ico'});
+      if(onClick)n.onclick=()=>{window.focus();onClick();n.close()};
+    }catch(e){console.warn('Native notification:',e)}
+  }
+}
 function confetti(){const c=$('#fx'),x=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
  const cols=['#0b9a89','#ff6a4d','#f5b301','#3b6fd8'];const ps=Array.from({length:90},()=>({x:innerWidth/2,y:innerHeight*.6,vx:(Math.random()-.5)*14,vy:-Math.random()*14-4,r:Math.random()*5+3,c:cols[Math.random()*4|0],a:1}));
  (function f(){x.clearRect(0,0,c.width,c.height);let alive=0;ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.35;p.a-=.012;if(p.a>0){alive++;x.globalAlpha=p.a;x.fillStyle=p.c;x.fillRect(p.x,p.y,p.r,p.r*1.6)}});alive?requestAnimationFrame(f):x.clearRect(0,0,c.width,c.height)})()}
@@ -403,23 +476,38 @@ const UNSUBS=[];
 function sub(path,key,map){const ref=S.db.collection(path);const q=(S.role!=='admin'&&path==='claims'&&ref.where)?ref.where('studentId','==',S.me.id):ref;UNSUBS.push(q.onSnapshot(s=>{S[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(map)map();changed()},()=>{S[key]=[];changed()}))}
 function startApp(){
   if(!subsStarted){subsStarted=true;
-    sub('items','items');sub('claims','claims');sub('returns','returns');
+    sub('items','items',()=>{if(S.role==='student')checkStudentMatches()});sub('claims','claims');sub('returns','returns');
     UNSUBS.push(S.db.doc('settings/main').onSnapshot(d=>{if(d.exists)S.settings={...S.settings,...d.data()};changed()},()=>{}));
-    if(S.role==='admin'){sub('itemPrivate','priv',sweepExpiry);sub('claimAnswers','answers');sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'))});sub('profiles','profiles');sub('handovers','handovers')}
-    else sub('data/users/'+S.me.id,'reports',()=>{S.reports=S.reports.filter(r=>r.kind)});
+    if(S.role==='admin'){sub('itemPrivate','priv',sweepExpiry);sub('claimAnswers','answers');sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'));checkAdminLostReports()});sub('profiles','profiles');sub('handovers','handovers')}
+    else sub('data/users/'+S.me.id,'reports',()=>{S.reports=S.reports.filter(r=>r.kind);checkStudentMatches()});
   }
   S.view=S.role==='admin'?'dash':'browse';draw();
 }
-const NAV={student:[['browse','search','Browse found'],['handin','hand','Found an item?'],['lostrep','pin','Report lost'],['myclaims','clock','My claims'],['profile','user','Profile']],
+const NAV={student:[['browse','search','Browse found'],['matches','spark','Matches'],['handin','hand','Found an item?'],['lostrep','pin','Report lost'],['myclaims','clock','My claims'],['profile','user','Profile']],
  admin:[['dash','home','Dashboard'],['add','plus','Add item'],['claims','check','Claims'],['matches','spark','Matches'],['students','users','Students'],['handover','log','Handover log'],['reports','chart','Reports'],['settings','shield','Settings']]};
-function badge(v){if(S.role!=='admin')return '';if(v==='claims')return S.claims.filter(c=>c.status==='requested').length;return 0}
+function badge(v){
+  if(S.role==='admin'){
+    if(v==='claims')return S.claims.filter(c=>c.status==='requested').length;
+    if(v==='matches'){
+      const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');
+      try{return findMatches(open,items).length}catch(e){return 0}
+    }
+    return 0;
+  }
+  if(S.role==='student'){
+    if(v==='matches')return getStudentMatches().length;
+    if(v==='myclaims')return S.claims.filter(c=>c.studentId===S.me.id&&c.status==='ready').length;
+    return 0;
+  }
+  return 0;
+}
 function draw(){
   $('#app').innerHTML=`<div class="shell"><nav class="rail" aria-label="Main"><div class="brandmark"><b>${ic('search')}</b>Lost &amp; Found</div>
-   ${NAV[S.role].map(([v,i,l])=>`<button class="nv ${S.view===v?'on':''}" data-v="${v}">${ic(i)}<span class="lbl long">${l}</span><span class="lbl short">${({'My claims':'Claims','Report lost':'Lost','Browse found':'Browse','Found an item?':'Found'})[l]||l.split(' ')[0]}</span>${badge(v)?`<span class="dot">${badge(v)}</span>`:''}</button>`).join('')}
+   ${NAV[S.role].map(([v,i,l])=>`<button class="nv ${S.view===v?'on':''}" data-v="${v}">${ic(i)}<span class="lbl long">${l}</span><span class="lbl short">${({'My claims':'Claims','Report lost':'Lost','Browse found':'Browse','Found an item?':'Found','Matches':'Matches'})[l]||l.split(' ')[0]}</span>${badge(v)?`<span class="dot">${badge(v)}</span>`:''}</button>`).join('')}
    <div class="sp"></div><button class="nv" id="share">${ic('qr')}<span class="lbl long">Share &amp; QR</span><span class="lbl short">Share</span></button><button class="nv" id="out">${ic('out')}<span class="lbl long">Sign out</span><span class="lbl short">Exit</span></button></nav>
    <main><div id="view"></div></main></div>`;
   $$('.nv[data-v]').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.pick=null;draw()});
-  $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[]});S.role=null;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
+  $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;seenMatchPairIds.clear();studentMatchInit=false;seenLostIds.clear();adminLostInit=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[]});S.role=null;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
   paint();
 }
 function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','handover','reports','settings'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;/* re-check: the user may have opened a form meanwhile, and repainting would wipe what they typed */paint(false);$$('.nv .dot').forEach(d=>d.remove());NAV[S.role].forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
@@ -471,7 +559,9 @@ VIEWS.browse=()=>{
   const q=S.q.toLowerCase(),list=avail.filter(i=>(S.filter==='all'||i.cat===S.filter)&&(!q||(i.desc+i.cat+i.loc).toLowerCase().includes(q)));
   const wk=avail.filter(i=>now()-i.foundAt<7*DAY).length;
   const mine=new Set(S.claims.filter(c=>c.studentId===S.me.id).map(c=>c.itemId));
+  const myMatches=(S.role==='student')?getStudentMatches():[];
   return head('Found items',`Hello ${esc((S.profile?.name||S.me.name||'').split(' ')[0])}. Spot yours? Tap "This is mine".`)+
+   (myMatches.length?`<div class="banner rise" style="background:var(--brand-soft);border-color:var(--brand);color:var(--brand);cursor:pointer;margin-bottom:12px" onclick="S.view='matches';draw()">${ic('spark')}<b>${myMatches.length} matching found item${myMatches.length>1?'s':''}</b> detected for your lost report! Tap to view &amp; claim.</div>`:'')+
    (wk?`<div class="banner rise">${ic('spark')}${wk} new item${wk>1?'s':''} handed in this week.</div>`:'')+
    `<p class="hint rise" style="margin-bottom:10px">Found something? Hand it to the admin office. When it reaches its owner it is added to your history.</p><div class="row rise" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search by item or place" value="${esc(S.q)}" style="max-width:420px"></div>
    <div class="chips rise">${['all',...new Set(avail.map(i=>i.cat))].map(c=>`<button class="chip ${S.filter===c?'on':''}" data-c="${esc(c)}">${c==='all'?'All':esc(c)}</button>`).join('')}</div>
@@ -621,15 +711,86 @@ function findMatches(open,items){
       .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);   /* sort is stable, so earlier items win ties */
     return{l,c}}).filter(r=>r.c.length)}
 const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching word'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
-VIEWS.matches=()=>{const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
+
+function getStudentMatches(){
+  if(S.role!=='student')return [];
+  const myLost=S.reports.filter(r=>r.kind==='lost'&&r.status!=='resolved');
+  if(!myLost.length)return [];
+  const avail=S.items.filter(i=>i.status==='unclaimed');
+  try{return findMatches(myLost,avail)}catch(e){console.warn('Match calculation error:',e);return []}
+}
+
+const seenMatchPairIds=new Set();
+let studentMatchInit=false;
+function checkStudentMatches(){
+  if(S.role!=='student')return;
+  const matches=getStudentMatches();
+  if(!studentMatchInit){
+    matches.forEach(m=>{m.c.forEach(match=>seenMatchPairIds.add(m.l.id+'_'+match.i.id))});
+    studentMatchInit=true;
+    return;
+  }
+  let newMatchFound=false,lastDesc='';
+  matches.forEach(m=>{
+    m.c.forEach(match=>{
+      const k=m.l.id+'_'+match.i.id;
+      if(!seenMatchPairIds.has(k)){
+        seenMatchPairIds.add(k);
+        newMatchFound=true;
+        lastDesc=`${match.p}% match found for your lost ${m.l.desc}: "${match.i.desc}"`;
+      }
+    });
+  });
+  if(newMatchFound){
+    sendNotification('Match Found for Your Lost Item!',lastDesc,()=>{S.view='matches';draw()},'match');
+  }
+}
+
+const seenLostIds=new Set();
+let adminLostInit=false;
+function checkAdminLostReports(){
+  if(S.role!=='admin')return;
+  const openReports=S.lost.filter(l=>l.kind==='lost'&&l.status==='open');
+  if(!adminLostInit){
+    openReports.forEach(l=>seenLostIds.add(l.id));
+    adminLostInit=true;
+    return;
+  }
+  openReports.forEach(l=>{
+    if(!seenLostIds.has(l.id)){
+      seenLostIds.add(l.id);
+      sendNotification('New Lost Item Reported!',`${l.name||'Student'} reported lost: ${l.desc} at ${l.zone||'Campus grounds'}`,()=>{S.view='matches';draw()},'alert');
+    }
+  });
+}
+
+VIEWS.matches=()=>{
+  if(S.role==='student'){
+    const matches=getStudentMatches();
+    const mineClaims=new Set(S.claims.filter(c=>c.studentId===S.me.id).map(c=>c.itemId));
+    return head('Your matches','Items handed in to the admin office that match what you lost (75% match or higher).')+
+      (matches.length?`<div class="list">${matches.map(({l,c})=>c.map(match=>{
+        const it=match.i,claimed=mineClaims.has(it.id);
+        return `<article class="card rise"><div class="row"><div class="ic v">${ic(catIcon(it.cat))}</div><div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(it.desc)}</b><span class="pill p-new">${match.p}% match</span>${claimed?'<span class="pill p-claimed">Claimed</span>':''}</div>
+        <div class="meta" style="margin:8px 0"><span>${ic('pin')}${esc(it.loc)}</span><span>${ic('clock')}${fmtDate(it.date)}</span></div>
+        <div class="hint">Matched with your lost report: <i>"${esc(l.desc)}"</i></div>
+        <div class="hint" style="margin-top:4px">Why: ${esc(why(match.w))}</div></div></div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          ${claimed?'<span class="pill p-new">Claim submitted</span>':`<button class="btn sm" data-claim="${esc(it.id)}">This is mine</button>`}
+        </div></article>`;
+      }).join('')).join('')}</div>`:empty('spark','No matches yet','When an item handed in to the admin office matches your lost report with 75% accuracy or higher, it appears here and notifies you automatically.'));
+  }
+  const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
   try{res=findMatches(open,items)}catch(e){console.error(e);note=`<div class="warn">Could not compute matches: ${esc(e.message)}</div>`}
   return head('Matches','Suggests a found item only when it is a 75% match or higher.')+note+
   `<div class="sec" style="margin-top:0">Likely matches</div>${res.length?`<div class="list">${res.map(({l,c})=>{const best=c[0];return `<article class="card rise"><div class="row"><div class="ic v">${ic('spark')}</div><div class="grow"><b>${esc(l.name)} lost: ${esc(l.desc)}</b><div class="meta"><span>${esc(l.cat)}</span><span>${ic('pin')}${esc(l.zone)}</span><span>${fmtDate(l.when)}</span></div></div><span class="pill p-new">${best.p}% match</span></div>
    <div class="cmp"><div><small>Best found item</small>${esc(best.i.desc)}</div><div><small>Stored at</small>${esc(best.i.storage||'')}${best.i.locked?' (locked)':''}</div></div><div class="hint">Why: ${esc(why(best.w))}</div>
    ${c.length>1?`<div class="hint" style="margin-top:6px">Other possible: ${c.slice(1).map(x=>esc(x.i.desc)+' ('+x.p+'%)').join(' · ')}</div>`:''}
    <div class="meta">Contact: ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).phone||'')} · ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).email||'')}</div><button class="btn sm" style="margin-top:10px" data-lost="${esc(l.id)}">Mark resolved</button></article>`}).join('')}</div>`:(note?'':'<p class="hint">No matches of 75% or higher right now.</p>')}`};
-AFTER.matches=()=>{$$('[data-lost]').forEach(b=>b.onclick=async()=>{const l=S.lost.find(x=>x.id===b.dataset.lost);if(!l)return;b.disabled=true;
-  try{await S.db.collection('lost').doc(l.studentId).update({[l.id]:{...l,status:'resolved'}});toast('Marked resolved')}catch(e){b.disabled=false;toast('Could not update the report')}})};
+AFTER.matches=()=>{
+  $$('[data-claim]').forEach(b=>b.onclick=()=>claimModal(b.dataset.claim));
+  $$('[data-lost]').forEach(b=>b.onclick=async()=>{const l=S.lost.find(x=>x.id===b.dataset.lost);if(!l)return;b.disabled=true;
+    try{await S.db.collection('lost').doc(l.studentId).update({[l.id]:{...l,status:'resolved'}});toast('Marked resolved')}catch(e){b.disabled=false;toast('Could not update the report')}})};
 
 VIEWS.reports=()=>{const it=S.priv,by=k=>Object.entries(it.reduce((m,i)=>(m[i[k]]=(m[i[k]]||0)+1,m),{})).sort((a,b)=>b[1]-a[1]),cats=by('cat'),locs=by('loc'),mx=Math.max(1,...cats.map(x=>x[1]),...locs.map(x=>x[1]));
   const wk=it.filter(i=>now()-i.foundAt<7*DAY);const bars=a=>a.length?a.map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><div><i style="--w:${v/mx*100}%"></i></div><span>${v}</span></div>`).join(''):'<p class="hint">No data yet.</p>';
