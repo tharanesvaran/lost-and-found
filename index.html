@@ -226,6 +226,37 @@ td{padding:10px 8px;border-top:1px solid var(--line)}
 .notif-body p{margin:4px 0 0;font-size:13px;color:var(--muted);line-height:1.35}
 .notif-close{background:transparent;border:0;font-size:18px;color:var(--muted);cursor:pointer;padding:0 4px}
 @keyframes slideDown{from{opacity:0;transform:translateY(-30px)}to{opacity:1;transform:translateY(0)}}
+
+/* landing page & features */
+.landing-wrap{max-width:1120px;margin:0 auto;padding-block:16px 64px;display:flex;flex-direction:column;gap:56px}
+.landing-wrap .login{min-height:auto;padding-block:16px}
+.landing-about{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:32px;box-shadow:var(--shadow)}
+.landing-about h2{font-size:clamp(24px,3.5vw,34px);margin-bottom:12px;color:var(--fg)}
+.landing-about p{font-size:16px;color:var(--muted);line-height:1.6;margin:0 0 20px;max-width:85ch}
+.pill-row{display:flex;flex-wrap:wrap;gap:10px}
+.pill-row .pill{padding:6px 14px;font-size:13px;border-radius:10px}
+.sec-title{text-align:center;max-width:640px;margin:0 auto 28px}
+.sec-title h2{font-size:clamp(26px,4vw,36px);margin-bottom:8px}
+.sec-title p{color:var(--muted);font-size:16px;margin:0}
+.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.step-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px;position:relative;display:flex;flex-direction:column;gap:14px;transition:transform .2s,box-shadow .2s,border-color .2s}
+.step-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--brand)}
+.step-num{width:32px;height:32px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-weight:800;font-size:14px}
+.step-card h3{font-size:19px;margin:0;color:var(--fg)}
+.step-card p{color:var(--muted);margin:0;font-size:14px;line-height:1.55}
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:20px}
+.feat-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px;display:flex;gap:16px;align-items:flex-start;transition:transform .2s,border-color .2s,box-shadow .2s}
+.feat-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--brand)}
+.feat-ic{width:48px;height:48px;border-radius:16px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;flex:none}
+.feat-ic.hot{background:var(--hot-soft);color:var(--hot)}
+.feat-ic.sun{background:var(--sun-soft);color:var(--sun)}
+.feat-ic.info{background:var(--info-soft);color:var(--info)}
+.feat-ic.good{background:var(--good-soft);color:var(--good)}
+.feat-body h3{font-size:17px;margin:0 0 6px;color:var(--fg)}
+.feat-body p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.landing-footer-card{background:var(--surface2);border:1px solid var(--line);border-radius:22px;padding:28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px}
+.landing-footer-card h3{font-size:20px;margin:0 0 6px}
+.landing-footer-card p{color:var(--muted);margin:0;font-size:14px}
 </style>
 </head><body>
 
@@ -458,16 +489,132 @@ function renderLogin(){
   const app=$('#app');
   const left=`<section class="hero"><div class="brandmark"><b>${ic('search')}</b>College Lost &amp; Found</div>
    <h1>Lost it? Found it. <em>Back to you.</em></h1>
-   <p>One office, one list, no wandering from desk to desk. Report what you find, claim what you lost, and follow every step from your phone.</p>
+   <p>The central digital platform for our campus. Report what you lost, hand in what you found, and track your item's return directly from your phone.</p>
    <div class="floaters" aria-hidden="true"><span style="left:0;top:8px;animation-delay:0s">${ic('phone')}Phone</span><span style="left:38%;top:0;animation-delay:-1.5s">${ic('key')}Keys</span><span style="left:8%;top:78px;animation-delay:-3s">${ic('wallet')}Wallet</span><span style="left:50%;top:70px;animation-delay:-2s">${ic('bag')}Bag</span><span style="right:0;top:20px;animation-delay:-4s">${ic('laptop')}Laptop</span></div></section>`;
-  const card=`<div class="logincard"><h3 style="font-size:26px">Welcome</h3><p class="hint" style="margin:4px 0 18px">Sign in with your Google account to continue.</p>
+  const card=`<div class="logincard" id="signin-card"><h3 style="font-size:26px">Sign In</h3><p class="hint" style="margin:4px 0 18px">Use your college Google account to access your portal.</p>
    <button class="gbtn" id="g"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H24v8h11.3C33.700 33.100 29.300 36 24 36a12 12 0 1 1 7.900-21l5.700-5.700A20 20 0 1 0 44 24c0-1.300-.1-2.700-.4-4z"/><path fill="#FF3D00" d="m6.300 14.700 6.600 4.800A12 12 0 0 1 31.900 15l5.700-5.700A20 20 0 0 0 6.300 14.700z"/><path fill="#4CAF50" d="M24 44c5.200 0 9.900-2 13.400-5.200l-6.200-5.200A12 12 0 0 1 12.700 28l-6.500 5A20 20 0 0 0 24 44z"/><path fill="#1976D2" d="M43.600 20H24v8h11.300a12 12 0 0 1-4.100 5.600l6.200 5.200C37 39.200 44 34 44 24c0-1.300-.1-2.700-.4-4z"/></svg>Continue with Google</button>
-   <p class="hint" style="margin-top:14px">One-click sign-in. Staff and students are directed to their portals automatically.</p>${S.demo?`<div class="warn" style="margin-top:12px">${S.libErr?'Demo mode: the Supabase library could not be loaded, so data stays in this tab only.':'Demo mode: Supabase is not configured yet.'}</div>`:''}</div>`;
-  app.innerHTML=`<div class="login">${left}${card}</div>`;
+   <p class="hint" style="margin-top:14px">One-click instant login. Students, staff, and managers are directed to their portals automatically.</p>${S.demo?`<div class="warn" style="margin-top:12px">${S.libErr?'Demo mode: the Supabase library could not be loaded, so data stays in this tab only.':'Demo mode: Supabase is not configured yet.'}</div>`:''}</div>`;
+
+  const aboutSection=`<section class="landing-about rise">
+    <h2>What is College Lost &amp; Found?</h2>
+    <p>College Lost &amp; Found is our campus's centralized digital lost property repository. Instead of wandering across departments, checking notice boards, or asking around in group chats, every recovered item on campus is cataloged here. Students can report lost belongings with interactive map pinning, browse verified found items, and get alerted automatically the moment a matching item is handed in to the admin office.</p>
+    <div class="pill-row">
+      <span class="pill p-new">${ic('spark')} Smart AI 75%+ Matching</span>
+      <span class="pill p-claimed">${ic('pin')} Interactive Campus Map</span>
+      <span class="pill p-returned">${ic('lock')} Anti-Theft Verification</span>
+      <span class="pill p-unclaimed">${ic('shield')} Complete Student Privacy</span>
+      <span class="pill p-expired">${ic('bell')} Instant Audio &amp; App Alerts</span>
+    </div>
+  </section>`;
+
+  const stepsSection=`<section class="landing-steps rise">
+    <div class="sec-title">
+      <h2>How It Works</h2>
+      <p>A simple 3-step transparent process to find and recover your misplaced belongings.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="row" style="justify-content:space-between">
+          <div class="feat-ic">${ic('pin')}</div>
+          <div class="step-num">1</div>
+        </div>
+        <h3>Report or Hand In</h3>
+        <p>Lost an item? File a report with description and drop a pin on our campus map. Found an item? Hand it straight to the admin office so staff can safely store it.</p>
+      </div>
+      <div class="step-card">
+        <div class="row" style="justify-content:space-between">
+          <div class="feat-ic sun">${ic('spark')}</div>
+          <div class="step-num">2</div>
+        </div>
+        <h3>Smart Match &amp; Alert</h3>
+        <p>Our algorithm compares lost reports with items logged by staff. When a 75%+ match is found, you receive an instant audio chime, toast notification, and mobile alert.</p>
+      </div>
+      <div class="step-card">
+        <div class="row" style="justify-content:space-between">
+          <div class="feat-ic good">${ic('check')}</div>
+          <div class="step-num">3</div>
+        </div>
+        <h3>Verify &amp; Collect</h3>
+        <p>Tap "This is mine" and answer secret ownership questions (wallpaper, stickers, serial). Once approved, collect your item in person with your College ID card.</p>
+      </div>
+    </div>
+  </section>`;
+
+  const featuresSection=`<section class="landing-features rise">
+    <div class="sec-title">
+      <h2>Key Features</h2>
+      <p>Purpose-built tools designed for students, administrators, and campus staff.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feat-card">
+        <div class="feat-ic">${ic('spark')}</div>
+        <div class="feat-body">
+          <h3>Smart AI Match Detection</h3>
+          <p>Continuous comparison across category, location, dates, and keywords. Owners are notified with high-accuracy suggestions (75% or higher).</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ic sun">${ic('pin')}</div>
+        <div class="feat-body">
+          <h3>Interactive Campus Map</h3>
+          <p>Pinpoint exact locations across Block A, B, C, CC Hall, Nachimuthu Polytechnic, and Book Depot so items can be pinpointed accurately.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ic hot">${ic('lock')}</div>
+        <div class="feat-body">
+          <h3>Anti-Theft Verification &amp; Locked Cabinet</h3>
+          <p>Valuables like smartphones, laptops, and wallets are held in locked storage. Two-tier verification questions ensure only the rightful owner can claim.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ic info">${ic('bell')}</div>
+        <div class="feat-body">
+          <h3>Real-Time Notifications</h3>
+          <p>Pleasant zero-asset offline audio chimes, animated top banners, and native browser &amp; Android push notifications keeping you updated on status changes.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ic good">${ic('user')}</div>
+        <div class="feat-body">
+          <h3>Finder Recognition &amp; Return History</h3>
+          <p>Students who hand in found items are officially credited. When the owner collects their belonging, the return is permanently logged in your history.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ic">${ic('users')}</div>
+        <div class="feat-body">
+          <h3>Multi-Role Hierarchy &amp; Profile Editing</h3>
+          <p>Students can edit their registered profile anytime. Managers can add or remove admins, modify permissions, and oversee the entire campus registry.</p>
+        </div>
+      </div>
+    </div>
+  </section>`;
+
+  const footerSection=`<section class="landing-footer-card rise">
+    <div>
+      <h3>Central Admin Office</h3>
+      <p>Ground Floor, Main Administration Building · Open Mon–Fri: 9:00 AM – 4:30 PM</p>
+      <p style="margin-top:4px;font-size:13px;color:var(--muted)">All collections require in-person identity verification with an official College Student ID Card.</p>
+    </div>
+    <button class="btn" id="scroll-to-signin">${ic('user')}Sign In with Google</button>
+  </section>`;
+
+  app.innerHTML=`<div class="landing-wrap">
+    <div class="login">${left}${card}</div>
+    ${aboutSection}
+    ${stepsSection}
+    ${featuresSection}
+    ${footerSection}
+  </div>`;
+
   $('#g').onclick=async()=>{
     if(S.auth){const b=$('#g');b.disabled=true;try{await S.auth.signInWithGoogle()}catch(e){b.disabled=false;toast('Sign-in failed: '+(e.message||'check the Google provider in Supabase'))}return}
     S.me={id:'demo-user',name:'Demo Student',email:'demo@college.edu',avatarUrl:'',canEdit:false};await autoRoute();
   };
+  $('#scroll-to-signin')&&($('#scroll-to-signin').onclick=()=>{
+    $('#signin-card')?.scrollIntoView({behavior:'smooth'});
+  });
 }
 function renderOnboard(){
   const m=S.me;
