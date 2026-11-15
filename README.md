@@ -32,3 +32,14 @@ Vercel preview URLs (random subdomains) are different origins; add them to the S
 - Until `config.js` is filled in, the page runs in demo mode (data lives in the open tab only).
 - Local test: `npx serve .` (add `http://localhost:3000/**` to Redirect URLs).
 - Matching is plain JavaScript inside `index.html` (`findMatches`). A suggestion needs a score of 9 or more out of 12 (75%).
+
+## Roles & Profile Permissions
+- **Primary Manager**: `tharanesvaran07@gmail.com`.
+- **Manager Powers**:
+  - Add, edit, or remove admins in the Admins tab.
+  - Search, edit, or remove students in the Students tab.
+  - Can edit **all** student details: Full name, Roll number, Department, Contact number, Gmail address, and Year of study.
+- **Student Profile Self-Service**:
+  - Students can edit their **Contact number**, **Gmail address**, and **Year of study** anytime from their profile tab.
+  - **Full Name** and **Roll Number** are locked as official college records and can only be modified by the manager.
+  - Database trigger `tr_protect_student_identity` enforces this rule server-side.

@@ -795,7 +795,8 @@ VIEWS.profile=()=>{const p=S.profile||{};const rep=[...S.reports].sort((a,b)=>b.
   return head('Your profile','Only you and the admin office can see this.',`<button class="btn sm" id="editProfileTopBtn">${ic('user')}Edit profile</button>`)+
    `<div class="card rise" style="max-width:640px"><div class="row"><div class="av" style="width:56px;height:56px;font-size:22px">${esc((p.name||'?')[0])}</div>
     <div class="grow"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><div><b style="font-size:18px">${esc(p.name)}</b><div class="hint">${esc(p.roll)} · ${esc(p.dept)} · ${esc(p.year)}</div></div><button class="btn ghost sm" id="editProfileBtn">Edit details</button></div></div></div>
-   <div class="meta" style="margin-top:12px"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div>
+   <div class="meta" style="margin-top:12px"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div>
+   <div class="hint" style="margin-top:12px;font-size:12.5px;display:flex;align-items:center;gap:6px">${ic('lock')}<span>Name and roll number can only be changed by the manager. You can update your contact number, Gmail, and year of study anytime.</span></div></div>
    ${historyCard()}`};
 AFTER.profile=()=>{
   const openEdit=()=>editStudentModal(S.profile,true);
@@ -1019,23 +1020,50 @@ function adminModal(existing=null){
 
 function editStudentModal(student, isSelf=false){
   const p=student||{};
-  modal(`<h3>${isSelf?'Edit your profile':'Edit student details'}</h3><p class="hint">${isSelf?'Update your contact information and details.':'Update registration information for '+esc(p.name||'Student')+'.'}</p>
-    <form id="esf" class="grid2" style="grid-template-columns:1fr;margin-top:12px"><label class="f">Full name<input class="in" id="es_name" required value="${esc(p.name||'')}"></label>
-    <div class="grid2"><label class="f">Roll number<input class="in" id="es_roll" required value="${esc(p.roll||'')}" placeholder="21CS104"></label><label class="f">Phone number<input class="in" id="es_phone" required inputmode="tel" pattern="[0-9+ \\-]{8,15}" value="${esc(p.phone||'')}" placeholder="98765 43210"></label></div>
-    <label class="f">Gmail address<input class="in" id="es_email" type="email" required value="${esc(p.email||'')}" ${isSelf?'readonly style="opacity:0.75"':''}></label>
-    <div class="grid2"><label class="f">Year of study<select class="in" id="es_year" required><option value="">Select</option>${['1st year','2nd year','3rd year','4th year','PG / other'].map(y=>`<option ${p.year===y?'selected':''}>${y}</option>`).join('')}</select></label>
-    <label class="f">Department<input class="in" id="es_dept" required value="${esc(p.dept||'')}" placeholder="Computer Science"></label></div>
-    <div class="msg-bad" id="es_err"></div><button class="btn" style="margin-top:6px;width:100%">Save changes</button></form>`,(s,close)=>{
+  const canEditIdentity=S.isManager && !isSelf;
+
+  const title=isSelf ? 'Edit your profile' : (S.isManager ? 'Edit student details' : 'Student details');
+  const subtitle=isSelf 
+    ? 'You can update your contact number, Gmail address, and year of study. Name and roll number are verified college records and can only be changed by the manager.' 
+    : (S.isManager ? 'Update verified registration information for '+esc(p.name||'Student')+'.' : 'View student registration information.');
+
+  const nameInput=canEditIdentity
+    ? `<label class="f">Full name<input class="in" id="es_name" required value="${esc(p.name||'')}"></label>`
+    : `<label class="f">Full name <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_name" value="${esc(p.name||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
+
+  const rollInput=canEditIdentity
+    ? `<label class="f">Roll number<input class="in" id="es_roll" required value="${esc(p.roll||'')}" placeholder="21CS104"></label>`
+    : `<label class="f">Roll number <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_roll" value="${esc(p.roll||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
+
+  const deptInput=canEditIdentity
+    ? `<label class="f">Department<input class="in" id="es_dept" required value="${esc(p.dept||'')}" placeholder="Computer Science"></label>`
+    : `<label class="f">Department <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_dept" value="${esc(p.dept||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
+
+  const phoneInput=`<label class="f">Contact number<input class="in" id="es_phone" required inputmode="tel" pattern="[0-9+ \\-]{8,15}" value="${esc(p.phone||'')}" placeholder="98765 43210"></label>`;
+
+  const emailInput=`<label class="f">Gmail address<input class="in" id="es_email" type="email" required value="${esc(p.email||'')}" placeholder="student@gmail.com"></label>`;
+
+  const yearInput=`<label class="f">Year of study<select class="in" id="es_year" required><option value="">Select</option>${['1st year','2nd year','3rd year','4th year','PG / other'].map(y=>`<option ${p.year===y?'selected':''}>${y}</option>`).join('')}</select></label>`;
+
+  modal(`<h3>${title}</h3><p class="hint">${subtitle}</p>
+    <form id="esf" class="grid2" style="grid-template-columns:1fr;margin-top:12px">
+      ${nameInput}
+      <div class="grid2">${rollInput}${phoneInput}</div>
+      ${emailInput}
+      <div class="grid2">${yearInput}${deptInput}</div>
+      <div class="msg-bad" id="es_err"></div>
+      <button class="btn" style="margin-top:6px;width:100%">Save changes</button>
+    </form>`,(s,close)=>{
     $('#esf',s).onsubmit=async e=>{
       e.preventDefault();
       const updated={
         uid:p.uid||S.me.id,
-        name:$('#es_name',s).value.trim(),
-        roll:$('#es_roll',s).value.trim().toUpperCase(),
+        name:canEditIdentity ? ($('#es_name',s).value.trim()||p.name||'') : (p.name||''),
+        roll:canEditIdentity ? ($('#es_roll',s).value.trim().toUpperCase()||p.roll||'') : (p.roll||''),
+        dept:canEditIdentity ? ($('#es_dept',s).value.trim()||p.dept||'') : (p.dept||''),
         phone:$('#es_phone',s).value.trim(),
-        email:$('#es_email',s).value.trim(),
+        email:$('#es_email',s).value.trim().toLowerCase(),
         year:$('#es_year',s).value,
-        dept:$('#es_dept',s).value.trim(),
         at:p.at||now()
       };
       try{
@@ -1044,6 +1072,8 @@ function editStudentModal(student, isSelf=false){
         if(S.me&&S.me.id===updated.uid){
           S.profile={...(S.profile||{}),...updated};
         }
+        const idx=S.profiles.findIndex(x=>x.uid===updated.uid);
+        if(idx>=0){S.profiles[idx]={...S.profiles[idx],...updated};}else{S.profiles.push(updated);}
         close();
         toast('Details updated successfully');
         paint(false);
