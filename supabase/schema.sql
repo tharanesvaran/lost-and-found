@@ -25,6 +25,20 @@ language sql stable security definer set search_path = public as $$
      );
 $$;
 
+create or replace function public.lf_is_manager() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.lf_email() <> ''
+     and (
+       public.lf_email() = 'tharanesvaran07@gmail.com'
+       or exists (
+         select 1 from public.docs 
+         where col = 'adminAllowlist' 
+           and id = public.lf_email() 
+           and data ->> 'role' = 'manager'
+       )
+     );
+$$;
+
 -- 3. Partial update used by the app: shallow-merges a JSON patch into a document (RLS still applies).
 create or replace function public.doc_update(p_col text, p_id text, p_patch jsonb) returns void
 language plpgsql security invoker set search_path = public as $$
@@ -39,6 +53,7 @@ revoke all on public.docs from anon;
 grant select, insert, update, delete on public.docs to authenticated;
 grant execute on function public.doc_update(text, text, jsonb) to authenticated;
 grant execute on function public.lf_is_admin() to authenticated;
+grant execute on function public.lf_is_manager() to authenticated;
 
 drop policy if exists docs_select on public.docs;
 drop policy if exists docs_insert on public.docs;
@@ -56,28 +71,32 @@ create policy docs_select on public.docs for select to authenticated using (
   or col = 'data/users/' || auth.uid()::text
 );
 
--- Create: students may file their own claim (status must start as "requested"), profile, answers, reports.
+-- Create: Managers may add to adminAllowlist. Students may file claims, profile, answers, reports.
 create policy docs_insert on public.docs for insert to authenticated with check (
-  (public.lf_is_admin() and col <> 'adminAllowlist')
+  (public.lf_is_manager() and col = 'adminAllowlist')
+  or (public.lf_is_admin() and col <> 'adminAllowlist')
   or (col = 'claims' and data ->> 'studentId' = auth.uid()::text and data ->> 'status' = 'requested')
   or (col in ('profiles', 'claimAnswers', 'lost', 'found') and id = auth.uid()::text)
   or col = 'data/users/' || auth.uid()::text
 );
 
--- Change: students can only change their own profile / answers / reports. They can never change a claim or an item.
+-- Change: Managers can update adminAllowlist. Admins update items/claims. Students update their own profile/answers/reports.
 create policy docs_update on public.docs for update to authenticated using (
-  (public.lf_is_admin() and col <> 'adminAllowlist')
+  (public.lf_is_manager() and col = 'adminAllowlist' and id <> 'tharanesvaran07@gmail.com')
+  or (public.lf_is_admin() and col <> 'adminAllowlist')
   or (col in ('profiles', 'claimAnswers', 'lost', 'found') and id = auth.uid()::text)
   or col = 'data/users/' || auth.uid()::text
 ) with check (
-  (public.lf_is_admin() and col <> 'adminAllowlist')
+  (public.lf_is_manager() and col = 'adminAllowlist')
+  or (public.lf_is_admin() and col <> 'adminAllowlist')
   or (col in ('profiles', 'claimAnswers', 'lost', 'found') and id = auth.uid()::text)
   or col = 'data/users/' || auth.uid()::text
 );
 
--- Delete: staff only. The staff allowlist itself can only be edited here in the SQL editor, never from the app.
+-- Delete: Managers can remove admins (except primary manager) and students. Admins can remove items.
 create policy docs_delete on public.docs for delete to authenticated using (
-  public.lf_is_admin() and col <> 'adminAllowlist'
+  (public.lf_is_manager() and col = 'adminAllowlist' and id <> 'tharanesvaran07@gmail.com')
+  or (public.lf_is_admin() and col <> 'adminAllowlist')
 );
 
 -- 5. Live updates (realtime). Leave REPLICA IDENTITY at its default so deleted rows only expose their key.

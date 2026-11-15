@@ -355,8 +355,8 @@ function memDb(){const data={},subs=[];const notify=p=>subs.filter(s=>s.col===p)
   async add(v){const r=api.doc();await r.set(v);return r},
   onSnapshot(n){const s={col:name,run:()=>n({docs:Object.keys(data).filter(k=>k.startsWith(name+'/')&&!k.slice(name.length+1).includes('/')).map(k=>({id:k.split('/').pop(),exists:true,data:()=>data[k]}))})};subs.push(s);s.run();return()=>{}}};return api};
  return{collection:col,doc:p=>{const i=p.lastIndexOf('/');return col(p.slice(0,i)).doc(p.slice(i+1))}}}
-const S={db:null,user:null,dl:null,demo:false,me:null,role:null,adminName:'',profile:null,view:'',
-  items:[],returns:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],settings:{holdDays:45},pick:null,prefill:null,filter:'all',q:''};
+const S={db:null,user:null,dl:null,demo:false,me:null,role:null,isManager:false,adminName:'',profile:null,view:'',
+  items:[],returns:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],allowlist:[],adminUsers:[],settings:{holdDays:45},pick:null,prefill:null,filter:'all',q:''};
 
 /* ---------- Supabase adapter: Firestore-style API over one "docs" table, so the app below is unchanged ---------- */
 function sbAuth(sb){
@@ -392,13 +392,25 @@ function sbDb(sb){
 
 async function meFrom(u){
   const email=(u.email||'').toLowerCase().trim();
-  const isSuperAdmin=(email==='tharanesvaran07@gmail.com');
-  const me={id:u.uid,name:u.displayName||(email?email.split('@')[0]:'User'),email:u.email||'',avatarUrl:u.photoURL||'',canEdit:isSuperAdmin,adminUsername:isSuperAdmin?(u.displayName||'Tharan'):''};
+  const isSuperManager=(email==='tharanesvaran07@gmail.com');
+  const me={
+    id:u.uid,
+    name:u.displayName||(email?email.split('@')[0]:'User'),
+    email:u.email||'',
+    avatarUrl:u.photoURL||'',
+    canEdit:isSuperManager,
+    isManager:isSuperManager,
+    adminRole:isSuperManager?'manager':'student',
+    adminUsername:isSuperManager?(u.displayName||'Tharan'):''
+  };
   try{
     const d=await S.db.doc('adminAllowlist/'+email).get();
     if(d.exists){
       me.canEdit=true;
       const dat=d.data()||{};
+      const isMgr=(dat.role==='manager'||isSuperManager);
+      me.isManager=isMgr;
+      me.adminRole=isMgr?'manager':'admin';
       me.adminUsername=dat.username||dat.name||u.displayName||email.split('@')[0];
     }
   }catch(e){console.warn('adminAllowlist check:',e)}
@@ -408,12 +420,14 @@ async function autoRoute(){
   if(!S.me){renderLogin();return}
   if(S.me.canEdit){
     S.role='admin';
-    S.adminName=S.me.adminUsername||S.me.name||'Admin';
+    S.isManager=!!S.me.isManager;
+    S.adminName=S.me.adminUsername||S.me.name||(S.isManager?'Manager':'Admin');
     store.set('lf_admin',S.adminName);
-    await S.db.collection('adminUsers').doc(S.me.id).set({username:S.adminName,name:S.me.name,email:S.me.email||'',at:now()}).catch(()=>{});
+    await S.db.collection('adminUsers').doc(S.me.id).set({username:S.adminName,name:S.me.name,email:S.me.email||'',role:S.isManager?'manager':'admin',at:now()}).catch(()=>{});
     startApp();
   }else{
     S.role='student';
+    S.isManager=false;
     let p=null;
     try{const d=await S.db.doc('data/users/'+S.me.id+'/profile').get();p=d.exists?d.data():null}catch(e){}
     if(p){S.profile=p;startApp()}else renderOnboard();
@@ -478,13 +492,30 @@ function startApp(){
   if(!subsStarted){subsStarted=true;
     sub('items','items',()=>{if(S.role==='student')checkStudentMatches()});sub('claims','claims');sub('returns','returns');
     UNSUBS.push(S.db.doc('settings/main').onSnapshot(d=>{if(d.exists)S.settings={...S.settings,...d.data()};changed()},()=>{}));
-    if(S.role==='admin'){sub('itemPrivate','priv',sweepExpiry);sub('claimAnswers','answers');sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'));checkAdminLostReports()});sub('profiles','profiles');sub('handovers','handovers')}
+    if(S.role==='admin'){
+      sub('itemPrivate','priv',sweepExpiry);
+      sub('claimAnswers','answers');
+      sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'));checkAdminLostReports()});
+      sub('profiles','profiles');
+      sub('handovers','handovers');
+      sub('adminAllowlist','allowlist');
+      sub('adminUsers','adminUsers');
+    }
     else sub('data/users/'+S.me.id,'reports',()=>{S.reports=S.reports.filter(r=>r.kind);checkStudentMatches()});
   }
   S.view=S.role==='admin'?'dash':'browse';draw();
 }
-const NAV={student:[['browse','search','Browse found'],['matches','spark','Matches'],['handin','hand','Found an item?'],['lostrep','pin','Report lost'],['myclaims','clock','My claims'],['profile','user','Profile']],
- admin:[['dash','home','Dashboard'],['add','plus','Add item'],['claims','check','Claims'],['matches','spark','Matches'],['students','users','Students'],['handover','log','Handover log'],['reports','chart','Reports'],['settings','shield','Settings']]};
+const NAV={
+  student:[['browse','search','Browse found'],['matches','spark','Matches'],['handin','hand','Found an item?'],['lostrep','pin','Report lost'],['myclaims','clock','My claims'],['profile','user','Profile']],
+  admin:[['dash','home','Dashboard'],['add','plus','Add item'],['claims','check','Claims'],['matches','spark','Matches'],['students','users','Students'],['handover','log','Handover log'],['reports','chart','Reports'],['settings','shield','Settings']]
+};
+function getAdminNav(){
+  const base=[...NAV.admin];
+  if(S.isManager){
+    base.splice(5,0,['admins','shield','Admins']);
+  }
+  return base;
+}
 function badge(v){
   if(S.role==='admin'){
     if(v==='claims')return S.claims.filter(c=>c.status==='requested').length;
@@ -502,15 +533,16 @@ function badge(v){
   return 0;
 }
 function draw(){
+  const navItems=(S.role==='admin')?getAdminNav():NAV.student;
   $('#app').innerHTML=`<div class="shell"><nav class="rail" aria-label="Main"><div class="brandmark"><b>${ic('search')}</b>Lost &amp; Found</div>
-   ${NAV[S.role].map(([v,i,l])=>`<button class="nv ${S.view===v?'on':''}" data-v="${v}">${ic(i)}<span class="lbl long">${l}</span><span class="lbl short">${({'My claims':'Claims','Report lost':'Lost','Browse found':'Browse','Found an item?':'Found','Matches':'Matches'})[l]||l.split(' ')[0]}</span>${badge(v)?`<span class="dot">${badge(v)}</span>`:''}</button>`).join('')}
+   ${navItems.map(([v,i,l])=>`<button class="nv ${S.view===v?'on':''}" data-v="${v}">${ic(i)}<span class="lbl long">${l}</span><span class="lbl short">${({'My claims':'Claims','Report lost':'Lost','Browse found':'Browse','Found an item?':'Found','Matches':'Matches','Admins':'Admins'})[l]||l.split(' ')[0]}</span>${badge(v)?`<span class="dot">${badge(v)}</span>`:''}</button>`).join('')}
    <div class="sp"></div><button class="nv" id="share">${ic('qr')}<span class="lbl long">Share &amp; QR</span><span class="lbl short">Share</span></button><button class="nv" id="out">${ic('out')}<span class="lbl long">Sign out</span><span class="lbl short">Exit</span></button></nav>
    <main><div id="view"></div></main></div>`;
   $$('.nv[data-v]').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.pick=null;draw()});
-  $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;seenMatchPairIds.clear();studentMatchInit=false;seenLostIds.clear();adminLostInit=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[]});S.role=null;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
+  $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;seenMatchPairIds.clear();studentMatchInit=false;seenLostIds.clear();adminLostInit=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],allowlist:[],adminUsers:[]});S.role=null;S.isManager=false;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
   paint();
 }
-function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','handover','reports','settings'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;/* re-check: the user may have opened a form meanwhile, and repainting would wipe what they typed */paint(false);$$('.nv .dot').forEach(d=>d.remove());NAV[S.role].forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
+function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','admins','handover','reports','settings','profile'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;paint(false);$$('.nv .dot').forEach(d=>d.remove());const navItems=(S.role==='admin')?getAdminNav():NAV.student;navItems.forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
 function head(t,p,extra=''){return `<div class="top"><div><h2>${t}</h2>${p?`<p>${p}</p>`:''}</div><div class="tools">${extra}<button class="btn ghost sm" id="theme" title="Toggle theme">${ic('sun')}</button></div></div>`}
 function paint(anim=true){
   const v=$('#view');const fn=VIEWS[S.view];if(!fn)return;
@@ -613,14 +645,22 @@ function historyCard(){const me=S.me.id,rt=S.returns.find(x=>x.id===me)||{count:
   return `<div class="sec">Your history</div><div class="stats" style="max-width:640px">${[['Found items returned to owners',ret.length,'var(--good)'],['Lost reports filed',lost.length,'var(--hot)'],['Own items got back',got.length,'var(--info)']].map(([l,n,c],k)=>`<div class="stat rise" style="--c:${c};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
   <div class="card rise" style="max-width:640px">${all.length?all.map(h=>`<div class="lb"><span class="grow">${esc(h.desc)}<div class="hint">${fmtDate(h.at)}${h.zone?' · '+esc(h.zone):''}</div></span><span class="pill ${L[h.t][1]}">${L[h.t][0]}</span></div>`).join(''):'<p class="hint" style="margin:0">Nothing yet. Items you hand in that reach their owner, and lost reports you file, will appear here.</p>'}</div>`}
 VIEWS.profile=()=>{const p=S.profile||{};const rep=[...S.reports].sort((a,b)=>b.ts-a.ts);
-  return head('Your profile','Only you and the admin office can see this.')+`<div class="card rise" style="max-width:640px"><div class="row"><div class="av" style="width:56px;height:56px;font-size:22px">${esc((p.name||'?')[0])}</div><div><b style="font-size:18px">${esc(p.name)}</b><div class="hint">${esc(p.roll)} · ${esc(p.dept)} · ${esc(p.year)}</div></div></div>
+  return head('Your profile','Only you and the admin office can see this.',`<button class="btn sm" id="editProfileTopBtn">${ic('user')}Edit profile</button>`)+
+   `<div class="card rise" style="max-width:640px"><div class="row"><div class="av" style="width:56px;height:56px;font-size:22px">${esc((p.name||'?')[0])}</div>
+    <div class="grow"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><div><b style="font-size:18px">${esc(p.name)}</b><div class="hint">${esc(p.roll)} · ${esc(p.dept)} · ${esc(p.year)}</div></div><button class="btn ghost sm" id="editProfileBtn">Edit details</button></div></div></div>
    <div class="meta" style="margin-top:12px"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div>
    ${historyCard()}`};
+AFTER.profile=()=>{
+  const openEdit=()=>editStudentModal(S.profile,true);
+  $('#editProfileTopBtn')&&($('#editProfileTopBtn').onclick=openEdit);
+  $('#editProfileBtn')&&($('#editProfileBtn').onclick=openEdit);
+};
 
 /* ================= ADMIN VIEWS ================= */
 const allItems=()=>S.priv.slice().sort((a,b)=>b.foundAt-a.foundAt);
 VIEWS.dash=()=>{const it=allItems(),c=s=>it.filter(i=>i.status===s).length;
-  return head('Dashboard',`Signed in as ${esc(S.adminName)}`,`<button class="btn sm" data-v="add">${ic('plus')}Add item</button>`)+
+  const roleName=S.isManager?'Manager':'Admin';
+  return head('Dashboard',`Signed in as ${esc(S.adminName)} (${roleName})`,`<button class="btn sm" data-v="add">${ic('plus')}Add item</button>`)+
   `<div class="stats">${[['Unclaimed',c('unclaimed'),'var(--info)'],['Claimed',c('claimed'),'var(--sun)'],['Returned',c('returned'),'var(--good)'],['Expired',c('expired'),'var(--bad)'],['Pending claims',S.claims.filter(x=>x.status==='requested').length,'var(--hot)']].map(([l,n,col],k)=>`<div class="stat rise" style="--c:${col};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
   <div class="row" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search items, places, finders" value="${esc(S.q)}" style="max-width:420px"></div>
   <div class="chips">${['all','unclaimed','claimed','returned','expired'].map(s=>`<button class="chip ${S.filter===s?'on':''}" data-f="${s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}</div><div id="ilist" class="list"></div>`};
@@ -685,10 +725,185 @@ function handoverModal(c){const p=S.profiles.find(x=>x.uid===c.studentId)||{},rw
     await S.db.collection('claims').doc(c.id).update({status:'collected'});await updItem(c.itemId,{status:'returned'});try{await logReturn(c)}catch(e){console.error(e)}close();confetti();toast(rw?'Handover recorded. Added to the finder\'s history.':'Handover recorded')}})}
 VIEWS.handover=()=>{const l=S.handovers.slice().sort((a,b)=>b.at-a.at);return head('Handover log','Permanent record of every release.')+(l.length?`<div class="card rise scroll"><table><thead><tr><th>Date</th><th>Roll no.</th><th>Student</th><th>Item</th><th>Released by</th><th>ID</th></tr></thead><tbody>${l.map(h=>`<tr><td>${new Date(h.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td>${esc(h.roll)}</td><td>${esc(h.studentName)}</td><td>${esc(h.itemDesc)}</td><td>${esc(h.by)}</td><td class="ok">${ic('check')}</td></tr>`).join('')}</tbody></table></div>`:empty('log','No handovers yet','Records appear here when you finish a claim.'))};
 
-VIEWS.students=()=>head('Students','Search by roll number or name. Only admins can see these details.')+`<input class="in rise" id="sq" placeholder="Roll number or name" style="max-width:420px;margin-bottom:14px"><div id="slist" class="list"></div>`;
-function drawStudents(){const q=($('#sq').value||'').toLowerCase().trim();const l=S.profiles.filter(p=>!q||(p.name+' '+p.roll).toLowerCase().includes(q));
-  $('#slist').innerHTML=l.length?l.map((p,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}"><div class="row"><div class="av">${esc((p.name||'?')[0])}</div><div class="grow"><b>${esc(p.name)}</b><div class="meta"><span>${esc(p.roll)}</span><span>${esc(p.dept)}</span><span>${esc(p.year)}</span></div><div class="meta"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div><span class="pill p-returned">${Object.keys(S.returns.find(x=>x.id===p.uid)||{}).filter(k=>k.startsWith('log_')).length} returned</span> <span class="pill p-claimed">${S.lost.filter(l=>l.studentId===p.uid).length} lost</span> <span class="pill p-new">${S.claims.filter(c=>c.studentId===p.uid).length} claims</span></div></article>`).join(''):empty('users',S.profiles.length?'No match':'No students yet','Students appear after their first Google sign-in and profile setup.')}
+VIEWS.students=()=>head('Students',S.isManager?'Search, update student details, or manage registrations.':'Search by roll number or name. Only admins can see these details.')+`<input class="in rise" id="sq" placeholder="Search by name, roll, phone, email, dept..." style="max-width:420px;margin-bottom:14px"><div id="slist" class="list"></div>`;
+function drawStudents(){
+  const q=($('#sq').value||'').toLowerCase().trim();
+  const l=S.profiles.filter(p=>!q||(p.name+' '+p.roll+' '+(p.dept||'')+' '+(p.email||'')+' '+(p.phone||'')).toLowerCase().includes(q));
+  $('#slist').innerHTML=l.length?l.map((p,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}"><div class="row"><div class="av">${esc((p.name||'?')[0])}</div><div class="grow"><b>${esc(p.name)}</b><div class="meta"><span>${esc(p.roll)}</span><span>${esc(p.dept)}</span><span>${esc(p.year)}</span></div><div class="meta"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><div class="row" style="gap:4px;flex-wrap:wrap"><span class="pill p-returned">${Object.keys(S.returns.find(x=>x.id===p.uid)||{}).filter(k=>k.startsWith('log_')).length} returned</span> <span class="pill p-claimed">${S.lost.filter(l=>l.studentId===p.uid).length} lost</span> <span class="pill p-new">${S.claims.filter(c=>c.studentId===p.uid).length} claims</span></div>${S.isManager?`<div class="row" style="gap:6px;margin-top:4px"><button class="btn ghost sm" data-edit-student="${esc(p.uid)}">Edit</button><button class="btn ghost sm bad" data-del-student="${esc(p.uid)}">Remove</button></div>`:''}</div></div></article>`).join(''):empty('users',S.profiles.length?'No match':'No students yet','Students appear after their first Google sign-in and profile setup.');
+  if(S.isManager){
+    $$('[data-edit-student]').forEach(b=>{
+      b.onclick=()=>{
+        const student=S.profiles.find(x=>x.uid===b.dataset.editStudent);
+        if(student) editStudentModal(student,false);
+      };
+    });
+    $$('[data-del-student]').forEach(b=>{
+      b.onclick=()=>{
+        const student=S.profiles.find(x=>x.uid===b.dataset.delStudent);
+        if(!student) return;
+        modal(`<h3>Remove student</h3><p class="hint">Are you sure you want to remove <b>${esc(student.name)}</b> (${esc(student.roll)})? Their registered profile will be removed.</p><div class="row" style="margin-top:16px;gap:10px"><button class="btn bad" id="cfmDelStud">Confirm remove</button><button class="btn ghost" id="cxlDelStud">Cancel</button></div>`,(s,close)=>{
+          $('#cxlDelStud',s).onclick=close;
+          $('#cfmDelStud',s).onclick=async()=>{
+            try{
+              await S.db.collection('profiles').doc(student.uid).delete();
+              await S.db.doc('data/users/'+student.uid+'/profile').delete().catch(()=>{});
+              close();
+              toast('Student profile removed');
+            }catch(err){console.error(err);toast('Could not remove student: '+(err.message||'error'))}
+          };
+        });
+      };
+    });
+  }
+}
 AFTER.students=()=>{$('#sq').oninput=drawStudents;drawStudents()};
+
+/* ---------- manage admins (manager role) ---------- */
+VIEWS.admins=()=>{
+  if(!S.isManager){
+    return head('Manage staff','Available only to Managers.')+empty('shield','Restricted','Only managers can manage staff members.');
+  }
+  const allow=S.allowlist||[];
+  const primaryEmail='tharanesvaran07@gmail.com';
+  const map=new Map();
+  map.set(primaryEmail,{email:primaryEmail,name:'Tharan (Primary)',username:'Tharan',role:'manager',isPrimary:true});
+  allow.forEach(a=>{
+    const em=(a.id||a.email||'').toLowerCase().trim();
+    if(em){
+      map.set(em,{email:em,name:a.username||a.name||em.split('@')[0],username:a.username||a.name||em.split('@')[0],role:a.role||'admin',isPrimary:(em===primaryEmail)});
+    }
+  });
+  const list=[...map.values()];
+  return head('Manage Staff & Admins','Add or remove staff, assign roles (Admin or Manager), and edit details.',`<button class="btn sm" id="addAdminBtn">${ic('plus')}Add staff</button>`)+
+    `<div class="banner rise" style="margin-bottom:14px">${ic('shield')}<b>Manager Controls:</b> Add new staff by Google email, change roles between Admin and Manager, or revoke staff access.</div>
+     <div class="list" id="adminList">${list.map((adm,n)=>`
+       <article class="card tilt rise" style="--i:${Math.min(n,8)}">
+         <div class="row">
+           <div class="av">${esc((adm.name||adm.email||'?')[0])}</div>
+           <div class="grow">
+             <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+               <b>${esc(adm.name)}</b>
+               <span class="pill ${adm.role==='manager'?'p-new':'p-claimed'}">${adm.role==='manager'?'Manager':'Admin'}</span>
+               ${adm.isPrimary?'<span class="pill p-lock">Primary</span>':''}
+             </div>
+             <div class="meta" style="margin-top:6px">
+               <span>${esc(adm.email)}</span>
+             </div>
+           </div>
+           <div class="row" style="gap:8px">
+             ${!adm.isPrimary?`<button class="btn ghost sm" data-edit-admin="${esc(adm.email)}">Edit</button>`:''}
+             ${(!adm.isPrimary&&adm.email!==S.me.email)?`<button class="btn ghost sm bad" data-del-admin="${esc(adm.email)}">Remove</button>`:''}
+           </div>
+         </div>
+       </article>
+     `).join('')}</div>`;
+};
+AFTER.admins=()=>{
+  const addBtn=$('#addAdminBtn');
+  if(addBtn) addBtn.onclick=()=>adminModal();
+  $$('[data-edit-admin]').forEach(b=>{
+    b.onclick=()=>{
+      const email=b.dataset.editAdmin;
+      const adm=(S.allowlist||[]).find(x=>(x.id||x.email||'').toLowerCase()===email);
+      adminModal(adm||{email,username:email.split('@')[0],role:'admin'});
+    };
+  });
+  $$('[data-del-admin]').forEach(b=>{
+    b.onclick=()=>{
+      const email=b.dataset.delAdmin;
+      if(email==='tharanesvaran07@gmail.com') return toast('Cannot remove the primary manager.');
+      if(email===S.me.email) return toast('You cannot remove yourself.');
+      modal(`<h3>Remove staff access</h3><p class="hint">Are you sure you want to revoke admin access for <b>${esc(email)}</b>? They will no longer be able to open the admin console.</p><div class="row" style="margin-top:16px;gap:10px"><button class="btn bad" id="cfmDelAdmin">Confirm remove</button><button class="btn ghost" id="cxlDelAdmin">Cancel</button></div>`,(s,close)=>{
+        $('#cxlDelAdmin',s).onclick=close;
+        $('#cfmDelAdmin',s).onclick=async()=>{
+          try{
+            await S.db.collection('adminAllowlist').doc(email).delete();
+            close();
+            toast('Staff access revoked');
+            paint(false);
+          }catch(err){console.error(err);toast('Could not remove: '+(err.message||'error'))}
+        };
+      });
+    };
+  });
+};
+
+function adminModal(existing=null){
+  const isEdit=!!existing;
+  const email=existing?(existing.email||existing.id||''):'';
+  const username=existing?(existing.username||existing.name||''):'';
+  const role=existing?(existing.role||'admin'):'admin';
+  modal(`<h3>${isEdit?'Edit staff details':'Add new admin / manager'}</h3><p class="hint">${isEdit?'Update name and role for this staff member.':'Enter the Google email address of the staff member.'}</p>
+    <form id="amf" class="list" style="gap:14px;margin-top:14px">
+      <label class="f">Google email<input class="in" id="ame" type="email" required ${isEdit?'readonly style="opacity:0.75"':''} value="${esc(email)}" placeholder="staff@gmail.com"></label>
+      <label class="f">Name / Username<input class="in" id="amu" required value="${esc(username)}" placeholder="e.g. Ramesh Kumar"></label>
+      <label class="f">Role
+        <select class="in" id="amr">
+          <option value="admin" ${role==='admin'?'selected':''}>Admin (Manage items, claims, handovers)</option>
+          <option value="manager" ${role==='manager'?'selected':''}>Manager (Manage admins, students, and items)</option>
+        </select>
+      </label>
+      <div class="msg-bad" id="amerr"></div>
+      <button class="btn" style="margin-top:6px">${isEdit?'Save changes':'Add staff'}</button>
+    </form>`,(s,close)=>{
+    $('#amf',s).onsubmit=async e=>{
+      e.preventDefault();
+      const em=$('#ame',s).value.toLowerCase().trim();
+      const un=$('#amu',s).value.trim();
+      const ro=$('#amr',s).value;
+      if(!em||!em.includes('@')){
+        $('#amerr',s).textContent='Please enter a valid email address.';
+        return;
+      }
+      if(isEdit&&em==='tharanesvaran07@gmail.com'&&ro!=='manager'){
+        $('#amerr',s).textContent='Primary manager role cannot be changed.';
+        return;
+      }
+      try{
+        const payload={email:em,username:un,role:ro,at:now()};
+        await S.db.collection('adminAllowlist').doc(em).set(payload);
+        close();
+        toast(isEdit?'Staff details updated':'New staff member added');
+        paint(false);
+      }catch(err){console.error(err);$('#amerr',s).textContent='Could not save: '+(err.message||'error')}
+    };
+  });
+}
+
+function editStudentModal(student, isSelf=false){
+  const p=student||{};
+  modal(`<h3>${isSelf?'Edit your profile':'Edit student details'}</h3><p class="hint">${isSelf?'Update your contact information and details.':'Update registration information for '+esc(p.name||'Student')+'.'}</p>
+    <form id="esf" class="grid2" style="grid-template-columns:1fr;margin-top:12px"><label class="f">Full name<input class="in" id="es_name" required value="${esc(p.name||'')}"></label>
+    <div class="grid2"><label class="f">Roll number<input class="in" id="es_roll" required value="${esc(p.roll||'')}" placeholder="21CS104"></label><label class="f">Phone number<input class="in" id="es_phone" required inputmode="tel" pattern="[0-9+ \\-]{8,15}" value="${esc(p.phone||'')}" placeholder="98765 43210"></label></div>
+    <label class="f">Gmail address<input class="in" id="es_email" type="email" required value="${esc(p.email||'')}" ${isSelf?'readonly style="opacity:0.75"':''}></label>
+    <div class="grid2"><label class="f">Year of study<select class="in" id="es_year" required><option value="">Select</option>${['1st year','2nd year','3rd year','4th year','PG / other'].map(y=>`<option ${p.year===y?'selected':''}>${y}</option>`).join('')}</select></label>
+    <label class="f">Department<input class="in" id="es_dept" required value="${esc(p.dept||'')}" placeholder="Computer Science"></label></div>
+    <div class="msg-bad" id="es_err"></div><button class="btn" style="margin-top:6px;width:100%">Save changes</button></form>`,(s,close)=>{
+    $('#esf',s).onsubmit=async e=>{
+      e.preventDefault();
+      const updated={
+        uid:p.uid||S.me.id,
+        name:$('#es_name',s).value.trim(),
+        roll:$('#es_roll',s).value.trim().toUpperCase(),
+        phone:$('#es_phone',s).value.trim(),
+        email:$('#es_email',s).value.trim(),
+        year:$('#es_year',s).value,
+        dept:$('#es_dept',s).value.trim(),
+        at:p.at||now()
+      };
+      try{
+        await S.db.collection('profiles').doc(updated.uid).set(updated);
+        await S.db.doc('data/users/'+updated.uid+'/profile').set(updated);
+        if(S.me&&S.me.id===updated.uid){
+          S.profile={...(S.profile||{}),...updated};
+        }
+        close();
+        toast('Details updated successfully');
+        paint(false);
+      }catch(err){console.error(err);$('#es_err',s).textContent='Could not save: '+(err.message||'error')}
+    };
+  });
+}
 
 /* ---------- matching (plain JavaScript) ----------
    For each open lost report, every unclaimed found item is scored and the best 3 are kept.
@@ -802,7 +1017,7 @@ AFTER.reports=()=>{$('#cdg').onclick=async()=>{try{await navigator.clipboard.wri
    try{await saveFile('lost-found-report.csv',csv);toast('Report saved')}catch(e){toast('Saving was cancelled or is unavailable here')}}};
 
 VIEWS.settings=()=>head('Settings','Holding period and housekeeping.')+`<div class="card rise" style="max-width:560px"><label class="f">Holding period: <b id="hv" style="color:var(--brand);font-size:18px">${S.settings.holdDays} days</b><input type="range" id="hd" min="30" max="60" value="${S.settings.holdDays}" style="width:100%;accent-color:var(--brand)"></label><p class="hint" style="margin-top:10px">Applies to items logged from now on. Items still unclaimed after this period are marked Expired, and you choose to donate, dispose or send them to the welfare fund.</p><button class="btn" id="sv" style="margin-top:12px">Save</button></div>
-<div class="card rise" style="max-width:560px;margin-top:16px"><h3 style="font-size:18px">Staff &amp; Admin Access</h3><p class="hint" style="margin:6px 0 12px"><b>Primary Admin:</b> tharanesvaran07@gmail.com (always enabled).<br>To add a new admin/staff member, add their Google email in your Supabase database:</p><div style="background:var(--surface2);padding:12px;border-radius:10px;font-family:monospace;font-size:13px;line-height:1.6;user-select:all;overflow-x:auto">insert into public.docs (col, id, data)<br>values ('adminAllowlist', 'newstaff@gmail.com', '{"role":"admin"}'::jsonb)<br>on conflict (col, id) do nothing;</div><p class="hint" style="margin-top:10px">Once added, when that person signs in with Google, they are automatically granted access to the Admin Dashboard.</p></div>`;
+<div class="card rise" style="max-width:560px;margin-top:16px"><h3 style="font-size:18px">Staff &amp; Admin Roles</h3><p class="hint" style="margin:6px 0 12px"><b>Primary Manager:</b> tharanesvaran07@gmail.com (Full Manager privileges).<br>${S.isManager?`As a <b>Manager</b>, you can add new staff, change roles between Admin and Manager, or remove staff directly in the app from the <b>Admins</b> tab.`:`Your current role is <b>Admin</b>. Contact the Manager to update staff roles.`}</p>${S.isManager?`<button class="btn sm" onclick="S.view='admins';draw()">${ic('shield')}Manage staff in Admins tab</button>`:''}</div>`;
 AFTER.settings=()=>{$('#hd').oninput=e=>$('#hv').textContent=e.target.value+' days';$('#sv').onclick=async()=>{await S.db.doc('settings/main').set({holdDays:+$('#hd').value});toast('Settings saved')}};
 
 boot();
