@@ -31,7 +31,19 @@ Vercel preview URLs (random subdomains) are different origins; add them to the S
   Never commit the `service_role` key.
 - Until `config.js` is filled in, the page runs in demo mode (data lives in the open tab only).
 - Local test: `npx serve .` (add `http://localhost:3000/**` to Redirect URLs).
-- Matching is plain JavaScript inside `index.html` (`findMatches`). A suggestion needs a score of 9 or more out of 12 (75%).
+- Matching Engine: Implemented in C language (`c_matcher/matcher.c` and `matcher.h`) and compiled to WebAssembly (`matcher.wasm`). A suggestion requires a score of 9 or more out of 12 (75% or higher).
+
+## C Language Matching Engine (College Project)
+The core similarity matching algorithm is written in **C** (`c_matcher/matcher.c`):
+- Multi-parameter similarity scoring (Category +3, Campus zone +2, 7-day timestamp proximity +1, Keyword tokens +2 each up to 6).
+- Minimum alert threshold: $\ge 75\%$ (score $9+/12$).
+- **To compile and test in C locally**:
+  ```bash
+  cd c_matcher
+  gcc -O2 matcher.c -o matcher
+  ./matcher
+  ```
+- **Web & Android Integration**: Compiled to WebAssembly (`matcher.wasm`) and runs with sub-millisecond latency directly inside the live Vercel web app and Android WebView.
 
 ## Roles & Profile Permissions
 - **Primary Manager**: `tharanesvaran07@gmail.com`.

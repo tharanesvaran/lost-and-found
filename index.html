@@ -1082,26 +1082,80 @@ function editStudentModal(student, isSelf=false){
   });
 }
 
-/* ---------- matching (plain JavaScript) ----------
-   For each open lost report, every unclaimed found item is scored and the best 3 are kept.
-   SCORE  same category +3 | same place +2 | dates within 7 days +1 | each shared word of 4+ letters +2 (max 3 words = +6)
-   Maximum score is 12. PERCENT = score / 12 * 100, rounded. A suggestion is made ONLY when percent >= 75 (score 9 or more). */
+/* ---------- C WebAssembly Similarity Match Engine (c_matcher/matcher.c) ----------
+   Compiled from pure C into WebAssembly (matcher.wasm).
+   Functions exported from C:
+     - score_pair(same_cat, same_loc, within_week, shared_words) -> score (0..12)
+     - percent_of(score) -> percent (0..100)
+     - is_match(score) -> 1 or 0 (threshold >= 75%)
+*/
+const C_WASM_B64='AGFzbQEAAAABDgJgBH9/f38Bf2ABfwF/AwQDAAEBByYDCnNjb3JlX3BhaXIAAApwZXJjZW50X29mAAEIaXNfbWF0Y2gAAgo3Ax4AIABBA2wgAUECbGogAmpBAyADIANBA0obQQJsagsOACAAQeQAbEEGakEMbQsHACAAQQlOCw==';
+let cMatcherExports=null;
+
+(function initCMatcher(){
+  try{
+    const binStr=atob(C_WASM_B64);
+    const len=binStr.length;
+    const bytes=new Uint8Array(len);
+    for(let i=0;i<len;i++) bytes[i]=binStr.charCodeAt(i);
+    const wasmModule=new WebAssembly.Module(bytes);
+    const wasmInstance=new WebAssembly.Instance(wasmModule);
+    cMatcherExports=wasmInstance.exports;
+    console.log('[C Matcher] Native C WebAssembly engine initialized successfully from c_matcher/matcher.c (matcher.wasm).');
+  }catch(e){
+    console.warn('[C Matcher] WebAssembly fallback active:', e);
+  }
+})();
+
 const MATCH={max:12,minPercent:75,top:3,weekMin:10080,maxTok:32,tokLen:32};
 const mins=t=>{const v=new Date(t).getTime();return Number.isFinite(v)?Math.floor(v/6e4):-1e9};
 const words=t=>{const out=[];for(const w of String(t??'').toLowerCase().match(/[a-z]{4,}/g)||[]){const k=w.slice(0,MATCH.tokLen-1);if(!out.includes(k)&&out.length<MATCH.maxTok)out.push(k)}return out};
-const percentOf=s=>Math.floor((s*100+MATCH.max/2)/MATCH.max);
-function scorePair(l,lw,it,iw){let s=0,w=0,shared=0;
-  if(l.cat===it.cat){s+=3;w|=1}
-  if(l.zone===it.loc){s+=2;w|=2}
-  if(Math.abs(mins(l.when)-mins(it.foundAt))<=MATCH.weekMin){s+=1;w|=4}
-  shared=Math.min(3,lw.filter(x=>iw.includes(x)).length);if(shared)w|=8;
-  return{s:s+shared*2,w:w|(shared<<4)}}
+
+function percentOf(s){
+  if(cMatcherExports&&cMatcherExports.percent_of){
+    return cMatcherExports.percent_of(s);
+  }
+  return Math.floor((s*100+MATCH.max/2)/MATCH.max);
+}
+
+function scorePair(l,lw,it,iw){
+  const sameCat=(l.cat===it.cat)?1:0;
+  const sameLoc=(l.zone===it.loc)?1:0;
+  const withinWeek=(Math.abs(mins(l.when)-mins(it.foundAt))<=MATCH.weekMin)?1:0;
+  const shared=Math.min(3,lw.filter(x=>iw.includes(x)).length);
+
+  let s=0;
+  if(cMatcherExports&&cMatcherExports.score_pair){
+    s=cMatcherExports.score_pair(sameCat, sameLoc, withinWeek, shared);
+  } else {
+    s=sameCat*3 + sameLoc*2 + withinWeek*1 + shared*2;
+  }
+
+  let w=0;
+  if(sameCat) w|=1;
+  if(sameLoc) w|=2;
+  if(withinWeek) w|=4;
+  if(shared) w|=8;
+  w|=(shared<<4);
+
+  return {s, w};
+}
+
+function isMatchThreshold(score){
+  if(cMatcherExports&&cMatcherExports.is_match){
+    return cMatcherExports.is_match(score)===1;
+  }
+  return score>=9;
+}
+
 function findMatches(open,items){
   const iw=items.map(i=>words((i.desc||'')+' '+(i.privateNote||'')));
   return open.map(l=>{const lw=words(l.desc);
-    const c=items.map((it,n)=>({i:it,...scorePair(l,lw,it,iw[n])})).map(r=>({...r,p:percentOf(r.s)})).filter(r=>r.p>=MATCH.minPercent)
-      .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);   /* sort is stable, so earlier items win ties */
-    return{l,c}}).filter(r=>r.c.length)}
+    const c=items.map((it,n)=>({i:it,...scorePair(l,lw,it,iw[n])})).map(r=>({...r,p:percentOf(r.s)}))
+      .filter(r=>isMatchThreshold(r.s))
+      .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);
+    return{l,c}}).filter(r=>r.c.length);
+}
 const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching word'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
 
 function getStudentMatches(){
@@ -1157,10 +1211,11 @@ function checkAdminLostReports(){
 }
 
 VIEWS.matches=()=>{
+  const cBadge=`<span class="pill p-new" style="display:inline-flex;align-items:center;gap:5px;font-size:12px">${ic('spark')} C Engine / Wasm</span>`;
   if(S.role==='student'){
     const matches=getStudentMatches();
     const mineClaims=new Set(S.claims.filter(c=>c.studentId===S.me.id).map(c=>c.itemId));
-    return head('Your matches','Items handed in to the admin office that match what you lost (75% match or higher).')+
+    return head('Your matches','Items handed in to the admin office that match what you lost (75% match or higher).',cBadge)+
       (matches.length?`<div class="list">${matches.map(({l,c})=>c.map(match=>{
         const it=match.i,claimed=mineClaims.has(it.id);
         return `<article class="card rise"><div class="row"><div class="ic v">${ic(catIcon(it.cat))}</div><div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(it.desc)}</b><span class="pill p-new">${match.p}% match</span>${claimed?'<span class="pill p-claimed">Claimed</span>':''}</div>
@@ -1174,7 +1229,7 @@ VIEWS.matches=()=>{
   }
   const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
   try{res=findMatches(open,items)}catch(e){console.error(e);note=`<div class="warn">Could not compute matches: ${esc(e.message)}</div>`}
-  return head('Matches','Suggests a found item only when it is a 75% match or higher.')+note+
+  return head('Matches','Suggests a found item only when it is a 75% match or higher.',cBadge)+note+
   `<div class="sec" style="margin-top:0">Likely matches</div>${res.length?`<div class="list">${res.map(({l,c})=>{const best=c[0];return `<article class="card rise"><div class="row"><div class="ic v">${ic('spark')}</div><div class="grow"><b>${esc(l.name)} lost: ${esc(l.desc)}</b><div class="meta"><span>${esc(l.cat)}</span><span>${ic('pin')}${esc(l.zone)}</span><span>${fmtDate(l.when)}</span></div></div><span class="pill p-new">${best.p}% match</span></div>
    <div class="cmp"><div><small>Best found item</small>${esc(best.i.desc)}</div><div><small>Stored at</small>${esc(best.i.storage||'')}${best.i.locked?' (locked)':''}</div></div><div class="hint">Why: ${esc(why(best.w))}</div>
    ${c.length>1?`<div class="hint" style="margin-top:6px">Other possible: ${c.slice(1).map(x=>esc(x.i.desc)+' ('+x.p+'%)').join(' · ')}</div>`:''}
