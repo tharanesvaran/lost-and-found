@@ -1107,9 +1107,31 @@ let cMatcherExports=null;
   }
 })();
 
+/* Campus Lexical Synonym Dictionary (Mirrors c_matcher/matcher.c) */
+const CAMPUS_SYNONYMS = {
+  mobile:'phone', cellphone:'phone', smartphone:'phone', handset:'phone', iphone:'phone', android:'phone',
+  specs:'glasses', spectacles:'glasses', shades:'glasses', eyeglasses:'glasses', goggles:'glasses',
+  earbuds:'earphones', airpods:'earphones', headphones:'earphones', headset:'earphones', earpiece:'earphones', pods:'earphones',
+  backpack:'bag', rucksack:'bag', knapsack:'bag', satchel:'bag', pouch:'bag',
+  pendrive:'drive', flashdrive:'drive', thumbdrive:'drive', usbdrive:'drive',
+  badge:'idcard', hallticket:'idcard', identitycard:'idcard', idbadge:'idcard',
+  purse:'wallet', billfold:'wallet', moneybag:'wallet', clutch:'wallet',
+  flask:'bottle', sipper:'bottle', waterbottle:'bottle', thermos:'bottle',
+  calci:'calculator', casio:'calculator', scientificcalculator:'calculator',
+  smartwatch:'watch', timepiece:'watch', wristwatch:'watch', fastrack:'watch', fitbit:'watch',
+  adapter:'charger', powerbank:'charger', cable:'charger', cord:'charger',
+  parasol:'umbrella', brolly:'umbrella', rainshade:'umbrella',
+  keychain:'keys', bikekey:'keys', scootykey:'keys', keyring:'keys',
+  notebook:'laptop', macbook:'laptop', computer:'laptop', thinkpad:'laptop'
+};
+const canonWord = w => CAMPUS_SYNONYMS[w] || w;
+
 const MATCH={max:12,minPercent:75,top:3,weekMin:10080,maxTok:32,tokLen:32};
 const mins=t=>{const v=new Date(t).getTime();return Number.isFinite(v)?Math.floor(v/6e4):-1e9};
-const words=t=>{const out=[];for(const w of String(t??'').toLowerCase().match(/[a-z]{4,}/g)||[]){const k=w.slice(0,MATCH.tokLen-1);if(!out.includes(k)&&out.length<MATCH.maxTok)out.push(k)}return out};
+const words=t=>{const out=[];for(const raw of String(t??'').toLowerCase().match(/[a-z]{3,}/g)||[]){
+  const w=canonWord(raw.slice(0,MATCH.tokLen-1));
+  if(!out.includes(w)&&out.length<MATCH.maxTok)out.push(w);
+}return out};
 
 function percentOf(s){
   if(cMatcherExports&&cMatcherExports.percent_of){
@@ -1156,7 +1178,7 @@ function findMatches(open,items){
       .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);
     return{l,c}}).filter(r=>r.c.length);
 }
-const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching word'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
+const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching keyword/synonym'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
 
 function getStudentMatches(){
   if(S.role!=='student')return [];

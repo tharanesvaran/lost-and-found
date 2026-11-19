@@ -53,9 +53,16 @@ typedef struct {
     int score;         /* 0 to 12 */
     int percent;       /* 0 to 100% */
     int why_flags;     /* Bitmask of reasons (WHY_*) */
-    int shared_words;  /* Count of common 4+ letter keywords */
+    int shared_words;  /* Count of common keywords */
     int is_match;      /* 1 if percent >= 75 (score >= 9), 0 otherwise */
 } MatchResult;
+
+/* Structure for campus synonym mapping / lexical canonicalization */
+typedef struct {
+    const char* canonical;        /* Canonical root term (e.g. "glasses") */
+    const char* aliases[8];       /* Common synonyms (e.g. "specs", "spectacles") */
+    int alias_count;
+} SynonymGroup;
 
 /* Core mathematical scoring functions (exported to WebAssembly / usable in C) */
 int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, int* out_why_flags);
@@ -64,6 +71,9 @@ int is_match_c(int score);
 
 /* High-level item evaluation function */
 MatchResult evaluate_match_c(const Item* lost, const Item* found);
+
+/* Lexical canonicalization & synonym mapping */
+const char* get_canonical_term_c(const char* word);
 
 /* String tokenization helpers */
 void str_to_lower_c(char* dest, const char* src, int max_len);

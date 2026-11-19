@@ -68,14 +68,22 @@ typedef struct {
     int score;         /* 0 to 12 */
     int percent;       /* 0 to 100% */
     int why_flags;     /* Bitmask of reasons (WHY_*) */
-    int shared_words;  /* Count of common 4+ letter keywords */
+    int shared_words;  /* Count of common keywords */
     int is_match;      /* 1 if percent >= 75 (score >= 9), 0 otherwise */
 } MatchResult;
+
+/* Structure for campus synonym mapping / lexical canonicalization */
+typedef struct {
+    const char* canonical;        /* Canonical root term (e.g. "glasses") */
+    const char* aliases[8];       /* Common synonyms (e.g. "specs", "spectacles") */
+    int alias_count;
+} SynonymGroup;
 
 int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, int* out_why_flags);
 int percent_of_c(int score);
 int is_match_c(int score);
 MatchResult evaluate_match_c(const Item* lost, const Item* found);
+const char* get_canonical_term_c(const char* word);
 
 #endif /* MATCHER_H */
 
@@ -87,6 +95,43 @@ MatchResult evaluate_match_c(const Item* lost, const Item* found);
 #if defined(_WIN32) && !defined(strcasecmp)
 #define strcasecmp _stricmp
 #endif
+
+/* Campus Synonym Dictionary for Lexical Canonicalization */
+static const SynonymGroup CAMPUS_SYNONYMS[] = {
+    {"phone",      {"mobile", "cellphone", "smartphone", "handset", "iphone", "android"}, 6},
+    {"glasses",    {"specs", "spectacles", "shades", "eyeglasses", "goggles"}, 5},
+    {"earphones",  {"earbuds", "airpods", "headphones", "headset", "earpiece", "pods"}, 6},
+    {"bag",        {"backpack", "rucksack", "knapsack", "satchel", "pouch"}, 5},
+    {"drive",      {"pendrive", "flashdrive", "thumbdrive", "usbdrive"}, 4},
+    {"idcard",     {"badge", "hallticket", "identitycard", "idbadge"}, 4},
+    {"wallet",     {"purse", "billfold", "moneybag", "clutch"}, 4},
+    {"bottle",     {"flask", "sipper", "waterbottle", "thermos"}, 4},
+    {"calculator", {"calci", "scientificcalculator", "casio"}, 3},
+    {"watch",      {"smartwatch", "timepiece", "wristwatch", "fastrack", "fitbit"}, 5},
+    {"charger",    {"adapter", "cable", "powerbank", "cord"}, 4},
+    {"umbrella",   {"parasol", "brolly", "rainshade"}, 3},
+    {"keys",       {"keychain", "bikekey", "scootykey", "keyring"}, 4},
+    {"laptop",     {"notebook", "macbook", "computer", "thinkpad"}, 4}
+};
+
+/**
+ * Resolves any synonym / alias to its canonical campus root word in O(1) time.
+ */
+const char* get_canonical_term_c(const char* word) {
+    if (!word || !word[0]) return "";
+    int total_groups = (int)(sizeof(CAMPUS_SYNONYMS) / sizeof(CAMPUS_SYNONYMS[0]));
+    for (int i = 0; i < total_groups; i++) {
+        if (strcasecmp(word, CAMPUS_SYNONYMS[i].canonical) == 0) {
+            return CAMPUS_SYNONYMS[i].canonical;
+        }
+        for (int j = 0; j < CAMPUS_SYNONYMS[i].alias_count; j++) {
+            if (strcasecmp(word, CAMPUS_SYNONYMS[i].aliases[j]) == 0) {
+                return CAMPUS_SYNONYMS[i].canonical;
+            }
+        }
+    }
+    return word;
+}
 
 /**
  * Calculates raw score (0-12) and generates bitmask reason flags.
@@ -150,7 +195,7 @@ void str_to_lower_c(char* dest, const char* src, int max_len) {
 }
 
 /**
- * Helper: Extracts distinct words with 4 or more letters from a text string.
+ * Helper: Extracts distinct words and canonicalizes synonyms using the dictionary.
  */
 int extract_keywords_c(const char* text, char tokens[][32], int max_tokens) {
     int token_count = 0;
@@ -165,18 +210,20 @@ int extract_keywords_c(const char* text, char tokens[][32], int max_tokens) {
                 buf[buf_idx++] = (char)tolower((unsigned char)ch);
             }
         } else {
-            if (buf_idx >= 4) { /* Only words with 4 or more letters */
+            if (buf_idx >= 3) { /* Minimum 3 letters */
                 buf[buf_idx] = '\0';
+                /* Canonicalize token using the C synonym dictionary */
+                const char* canon = get_canonical_term_c(buf);
                 /* Check if token is already present */
                 int exists = 0;
                 for (int j = 0; j < token_count; j++) {
-                    if (strcmp(tokens[j], buf) == 0) {
+                    if (strcmp(tokens[j], canon) == 0) {
                         exists = 1;
                         break;
                     }
                 }
                 if (!exists && token_count < max_tokens) {
-                    strncpy(tokens[token_count], buf, 31);
+                    strncpy(tokens[token_count], canon, 31);
                     tokens[token_count][31] = '\0';
                     token_count++;
                 }
@@ -248,33 +295,36 @@ MatchResult evaluate_match_c(const Item* lost, const Item* found) {
 int main(void) {
     printf("===========================================================================\n");
     printf("    COLLEGE LOST & FOUND - C SMART SIMILARITY MATCHING ENGINE              \n");
+    printf("      (With Lexical Synonym Canonicalization: specs <-> spectacles)        \n");
     printf("===========================================================================\n\n");
 
-    Item lost_items[4] = {
-        {"L01", "Electronics", "Library 2nd Floor", "Black Apple iPhone 13 with clear case", 10000},
-        {"L02", "Bags", "CC Hall", "Blue Fastrack college backpack with water bottle", 20000},
-        {"L03", "Keys", "Block C Ground", "Set of bike keys with Honda metal keychain", 30000},
-        {"L04", "Stationery", "Block B", "Scientific calculator Casio fx-991EX", 40000}
+    Item lost_items[5] = {
+        {"L01", "Accessories", "Library 2nd Floor", "Black specs with matte frame", 10000},
+        {"L02", "Electronics", "Library 2nd Floor", "Lost my mobile cellphone with clear case", 10000},
+        {"L03", "Bags", "CC Hall", "Blue Fastrack college backpack with water bottle", 20000},
+        {"L04", "Keys", "Block C Ground", "Set of bike keys with Honda metal keychain", 30000},
+        {"L05", "Stationery", "Block B", "Scientific calculator Casio fx-991EX", 40000}
     };
 
-    Item found_items[4] = {
-        {"F01", "Electronics", "Library 2nd Floor", "Black Apple iPhone 13 found near charging desk", 10200},
-        {"F02", "Bags", "CC Hall", "Blue Fastrack backpack handed in by student", 21500},
-        {"F03", "Keys", "Block C Ground", "Silver keys with Honda keychain", 30400},
-        {"F04", "Bottles", "Cafeteria", "Green Milton steel water bottle", 48000}
+    Item found_items[5] = {
+        {"F01", "Accessories", "Library 2nd Floor", "Found spectacles with black frame on table", 10200},
+        {"F02", "Electronics", "Library 2nd Floor", "Black smartphone found near charging desk", 10200},
+        {"F03", "Bags", "CC Hall", "Blue Fastrack backpack handed in by student", 21500},
+        {"F04", "Keys", "Block C Ground", "Silver keys with Honda keychain", 30400},
+        {"F05", "Bottles", "Cafeteria", "Green Milton steel water bottle", 48000}
     };
 
-    printf("%-6s | %-12s | %-6s | %-7s | %-12s | %s\n", "PAIR", "CATEGORY", "SCORE", "PERCENT", "DECISION", "REASONS");
-    printf("---------------------------------------------------------------------------\n");
+    printf("%-6s | %-12s | %-6s | %-7s | %-12s | %s\n", "PAIR", "CATEGORY", "SCORE", "PERCENT", "DECISION", "REASONS & SYNONYMS");
+    printf("-------------------------------------------------------------------------------------------\n");
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         MatchResult r = evaluate_match_c(&lost_items[i], &found_items[i]);
         char reasons[128] = "";
 
         if (r.why_flags & WHY_SAME_CATEGORY) strcat(reasons, "Category(+3) ");
         if (r.why_flags & WHY_SAME_LOCATION) strcat(reasons, "Place(+2) ");
         if (r.why_flags & WHY_WITHIN_WEEK)   strcat(reasons, "7-Days(+1) ");
-        if (r.why_flags & WHY_KEYWORD_MATCH) strcat(reasons, "Keywords ");
+        if (r.why_flags & WHY_KEYWORD_MATCH) strcat(reasons, "Keywords/Synonyms ");
 
         printf("Pair %d | %-12s | %2d/12 | %5d%%  | %-12s | %s\n",
             i + 1,
@@ -285,10 +335,9 @@ int main(void) {
             reasons);
     }
 
-    printf("---------------------------------------------------------------------------\n");
+    printf("-------------------------------------------------------------------------------------------\n");
     printf("Rule: Minimum threshold is >= 75%% similarity (Score 9 or higher).\n");
-    printf("Compiled C WebAssembly binary (matcher.wasm) executes this algorithm\n");
-    printf("directly inside the live web and Android WebView application.\n\n");
+    printf("Synonym canonicalization allows 'specs' to match 'spectacles' and 'mobile' to match 'smartphone'!\n\n");
 
     return 0;
 }
