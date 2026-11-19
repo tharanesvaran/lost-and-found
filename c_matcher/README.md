@@ -1,53 +1,77 @@
-# College Lost & Found - C Similarity Matcher Engine
+# College Lost & Found - C Algorithmic Engine Suite
 
 ## 1. Overview
-This module implements the **Intelligent Match Suggestion Engine** in the **C Programming Language** (C99/C11 Standard) with:
-1. **Lexical Synonym Canonicalization** (specs $\leftrightarrow$ spectacles $\rightarrow$ glasses, mobile $\leftrightarrow$ smartphone $\rightarrow$ phone)
-2. **2D Euclidean Spatial Distance & Campus Radius Decay Engine** ($540 \times 440$ interactive campus map geometry)
+This module implements the complete **C Native Algorithmic Engine** (C99/C11 Standard) for the College Lost & Found System.
 
-When a student files a lost report, this algorithm automatically compares it against all cataloged found items in the college administration database. Even when different words are used or when an item was picked up slightly away from where it was dropped (e.g. adjacent walkway or nearby building), the spatial geometry and synonym canonicalizer compute the mathematical proximity. When a pair scores **75% or higher** ($\ge 9$ out of $12$ points), the student receives an instant alert with verification options.
+It combines multi-factor similarity matching, computational geometry, string distance metrics, and state machines into a unified, high-performance C architecture.
 
 ---
 
-## 2. Mathematical Scoring, Spatial Geometry & Synonym Normalization
+## 2. Core Functional Modules in C
 
-$$\text{Total Score} = S_{\text{category}} + S_{\text{spatial}} + S_{\text{date}} + S_{\text{keywords/synonyms}}$$
+### Module 1: Similarity Scoring & Threshold Evaluation
+- **Formula**:
+  $$\text{Total Score} = S_{\text{category}}(3) + S_{\text{spatial}}(2) + S_{\text{date}}(1) + S_{\text{keywords}}(6) = 12 \text{ pts max}$$
+- **Threshold**: $\ge 75\%$ ($\ge 9/12$) triggers student match alerts.
+- **Exported Functions**: `score_pair_c()`, `score_pair_spatial_c()`, `percent_of_c()`, `is_match_c()`.
 
-$$\text{Similarity Percentage} = \left\lfloor \frac{\text{Total Score} \times 100 + 6}{12} \right\rfloor$$
+### Module 2: Lexical Synonym Canonicalization
+- Resolves campus vocabulary mismatches in $O(1)$ time:
+  - `specs` $\leftrightarrow$ `spectacles` $\rightarrow$ `glasses`
+  - `mobile` $\leftrightarrow$ `cellphone` $\rightarrow$ `phone`
+  - `airpods` $\leftrightarrow$ `earbuds` $\rightarrow$ `earphones`
+  - `calci` $\leftrightarrow$ `casio` $\rightarrow$ `calculator`
+- **Function**: `get_canonical_term_c()`.
 
-| Factor | Weight | Maximum | Description |
-| :--- | :---: | :---: | :--- |
-| **Category** | $+3$ | $3$ | Identical item classification (e.g., Electronics, Keys, ID Card) |
-| **Spatial Proximity** | $+2$ or $+1$ | $2$ | **Spot Match** ($d \le 45\text{px} \implies d^2 \le 2025$): $+2$ pts<br>**Nearby Decay** ($45 < d \le 130\text{px} \implies d^2 \le 16900$): $+1$ pt<br>Distant ($d > 130\text{px}$): $+1$ pt if same zone, else $0$<br>Unpinned fallback: $+2$ pts if same zone, else $0$ |
-| **Date Proximity** | $+1$ | $1$ | Lost and found timestamps within 7 days ($10,080$ minutes) |
-| **Keywords & Synonyms** | $+2$ | $6$ | Shared canonical terms (specs $\equiv$ glasses, mobile $\equiv$ phone, etc.) |
-| **Total** | | **$12$** | **Minimum alert threshold: $\ge 75\%$ (Score $9+/12$)** |
-
-### Spatial Distance Math (Integer Arithmetic):
-$$\Delta x = x_1 - x_2, \quad \Delta y = y_1 - y_2$$
-$$d^2 = (\Delta x)^2 + (\Delta y)^2$$
-- Squared distance avoids square root operations, ensuring $O(1)$ constant single-cycle time with zero floating-point roundoff errors.
-
-### Built-in Campus Synonym Groups (C Lookups):
-- `phone`: mobile, cellphone, smartphone, handset, iphone, android
-- `glasses`: specs, spectacles, shades, eyeglasses, goggles
-- `earphones`: earbuds, airpods, headphones, headset, earpiece, pods
-- `bag`: backpack, rucksack, knapsack, satchel, pouch
-- `drive`: pendrive, flashdrive, thumbdrive, usbdrive
-- `idcard`: badge, hallticket, identitycard, idbadge
-- `wallet`: purse, billfold, moneybag, clutch
-- `bottle`: flask, sipper, waterbottle, thermos
-- `calculator`: calci, scientificcalculator, casio
-- `watch`: smartwatch, timepiece, wristwatch, fastrack, fitbit
-- `charger`: adapter, cable, powerbank, cord
-- `keys`: keychain, bikekey, scootykey, keyring
-- `laptop`: notebook, macbook, computer, thinkpad
+### Module 3: 2D Spatial Distance & Radius Decay Geometry
+- Integer squared Euclidean distance $d^2 = (\Delta x)^2 + (\Delta y)^2$.
+  - **Spot Match**: $d^2 \le 2025$ ($d \le 45\text{px}$) $\rightarrow$ $+2$ points.
+  - **Nearby Decay**: $2025 < d^2 \le 16900$ ($d \le 130\text{px}$) $\rightarrow$ $+1$ point.
+  - **Distant**: $> 130\text{px} \rightarrow 0$ points (or $+1$ if same named zone).
+- **Functions**: `calculate_spatial_distance_sq_c()`, `calculate_spatial_score_c()`.
 
 ---
 
-## 3. How to Compile and Run (CLI Demonstration)
+## 3. The 6 Extended Features Implemented in C
 
-To demonstrate this C module during your lab viva or project review:
+### Feature 1: Fuzzy Search & Typo-Tolerance Engine (Levenshtein Distance)
+- **Algorithm**: Wagner–Fischer Dynamic Programming edit distance matrix.
+- **Purpose**: When a student misspells search queries (e.g., `"sammsung"`, `"iphne"`, `"calcilator"`), the C algorithm computes character edit distance ($O(M \times N)$) and converts it to a normalized similarity percentage ($0 \dots 100\%$).
+- **Functions**: `levenshtein_distance_c()`, `fuzzy_match_score_c()`.
+
+### Feature 2: Complex 2D Polygon Ray-Casting (Campus Landmark Detection)
+- **Algorithm**: Jordan Curve Theorem (Ray-Casting Algorithm).
+- **Purpose**: Instead of basic rectangular boxes, campus landmarks (such as L-shaped Block A or hexagonal CC Hall) are represented as true $N$-point 2D polygons. An imaginary horizontal ray is cast from $(x, y)$, counting edge crossings to determine interior placement.
+- **Functions**: `point_in_polygon_c()`, `detect_campus_zone_polygon_c()`.
+
+### Feature 3: Anti-Theft Verification Question & Answer Similarity Normalizer
+- **Purpose**: When claiming locked valuables (smartphones, wallets, laptops), claimants frequently type answers with slight formatting differences (e.g., `"Matte black case"` vs `"Black matte silicon cover"`).
+- **Algorithm**: Normalizes case, tokenizes keywords, and performs bidirectional token matching with $\le 1$ edit distance tolerance to approve rightful claims while rejecting fraudulent attempts.
+- **Functions**: `verify_answer_similarity_c()`, `is_answer_accepted_c()`.
+
+### Feature 4: Holding Period Expiration & Legal Disposition State Machine (FSM)
+- **Algorithm**: Deterministic state machine governing item retention according to institutional college policies:
+  $$\text{Active (Unclaimed)} \xrightarrow{\le 7\text{d left}} \text{Grace Period} \xrightarrow{\text{Expired}} \begin{cases} \text{Auction} & \text{(Valuables: Phones, Laptops)} \\ \text{Donation} & \text{(General: Bags, Books, Clothes)} \\ \text{Archive} & \text{(Sensitive: IDs, ATM cards)} \end{cases}$$
+- **Functions**: `evaluate_disposition_state_c()`, `disposition_state_name_c()`.
+
+### Feature 5: Okapi BM25 / Keyword Relevance Search Ranking
+- **Purpose**: Ranks cataloged items by query relevance rather than chronological database insertion order.
+- **Algorithm**: Evaluates exact title matches, description occurrences, canonicalized campus synonyms, and fuzzy keyword proximity to produce an integer relevance score ($0 \dots 100$).
+- **Function**: `compute_search_relevance_c()`.
+
+### Feature 6: Campus Loss Analytics & Statistical Aggregator
+- **Purpose**: Aggregates batch logs into institutional administrative metrics for college presentations and reviews.
+- **Metrics Computed**:
+  - **Recovery Rate %**: $\frac{\text{Returned Items} \times 100}{\text{Found Items}}$
+  - **Average Resolution Time (MTTR)**: Turnaround hours from initial report to verified handover.
+  - **Highest Risk Campus Zone**: Frequency distribution identifying the campus block with the most lost reports.
+- **Function**: `aggregate_campus_analytics_c()`.
+
+---
+
+## 4. How to Compile and Run (CLI Demonstration)
+
+To demonstrate the full C module suite during lab viva, project reviews, or viva voce:
 
 ### Using GCC (MinGW / Linux / macOS):
 ```bash
@@ -55,7 +79,7 @@ gcc -O2 matcher.c -o matcher
 ./matcher
 ```
 
-### Using Windows Developer Command Prompt (MSVC):
+### Using MSVC (Visual Studio / Windows Developer Prompt):
 ```cmd
 cl /O2 matcher.c
 matcher.exe
@@ -64,33 +88,54 @@ matcher.exe
 ### Sample Output:
 ```text
 ===========================================================================
-    COLLEGE LOST & FOUND - C SMART SIMILARITY MATCHING ENGINE              
-      (Lexical Synonyms + 2D Spatial Distance & Radius Decay Engine)       
+    COLLEGE LOST & FOUND - FULL C NATIVE ALGORITHMIC ENGINE                
+  (Similarity + Synonyms + Spatial + 6 Extended Features)                 
 ===========================================================================
 
-PAIR   | CATEGORY     | SCORE  | PERCENT | DECISION     | REASONS & SPATIAL GEOMETRY
--------------------------------------------------------------------------------------------
-Pair 1 | Accessories  | 10/12  |    83%  | >> MATCH <<  | Category(+3) Spot(+2) 7-Days(+1) Synonyms/Words 
-Pair 2 | Electronics  | 10/12  |    83%  | >> MATCH <<  | Category(+3) Spot(+2) 7-Days(+1) Synonyms/Words 
-Pair 3 | Bags         | 10/12  |    83%  | >> MATCH <<  | Category(+3) Spot(+2) 7-Days(+1) Synonyms/Words 
-Pair 4 | Keys         | 10/12  |    83%  | >> MATCH <<  | Category(+3) Spot(+2) 7-Days(+1) Synonyms/Words 
-Pair 5 | Bottles      |  0/12  |     0%  | No match     | 
-Pair 6 | Earphones    |  9/12  |    75%  | >> MATCH <<  | Category(+3) NearbyDecay(+1) 7-Days(+1) Synonyms/Words 
--------------------------------------------------------------------------------------------
-Pair 6 Highlights: Lost at Block B (308, 262), Found at Block C Walkway (260, 280).
-Distance squared = (308-260)^2 + (262-280)^2 = 48^2 + (-18)^2 = 2304 + 324 = 2628 <= 16900.
-Result: Spatial Radius Decay engine awards +1 Proximity point! With synonyms, score is 9/12 (75%)!
+[MODULE 1] Fuzzy Search & Typo-Tolerance (Levenshtein Distance):
+  Query: 'sammsung   ' vs Target: score =  88/100 (Match)
+  Query: 'iphne      ' vs Target: score =  83/100 (Match)
+  Query: 'calcilator ' vs Target: score =  90/100 (Match)
+  Query: 'spectacls  ' vs Target: score =  80/100 (Match)
+
+[MODULE 2] Complex 2D Polygon Ray-Casting (Campus Map Geometry):
+  Pin (300, 100) -> Detected Campus Zone: Block A
+  Pin (330, 290) -> Detected Campus Zone: Block B
+  Pin ( 50, 250) -> Detected Campus Zone: CC Hall
+
+[MODULE 3] Verification Answer Matching (Phonetic & Token Tolerance):
+  Student: 'Matte black case ' | Admin: 'Black matte silicon cover' -> 100% (APPROVED)
+  Student: 'spiderman blue   ' | Admin: 'Blue Spider-Man case     ' -> 100% (APPROVED)
+  Student: 'White clear      ' | Admin: 'Red rubber bumper        ' ->   0% (REJECTED)
+
+[MODULE 4] Holding Expiration & Legal Disposition State Machine (FSM):
+  Phone (Day 50/45)    -> State: Eligible for College Auction (days left: -5)
+  Bottle (Day 50/45)   -> State: Eligible for Student Charity Donation (days left: -5)
+  ID Card (Day 50/45)  -> State: Archived / Destroyed (Confidential) (days left: -5)
+
+[MODULE 5] BM25 / Keyword Relevance Search Ranking:
+  Query: 'lost specs glasses'
+    Item 1: 'Eyeglasses' -> Relevance:  90/100
+    Item 2: 'Keys'       -> Relevance:   0/100
+
+[MODULE 6] Campus Loss Analytics & Statistical Aggregator:
+  Total Lost: 4 | Found: 3 | Returned: 2
+  Recovery Rate: 66% | Avg Turnaround Time: 22 hrs
+  Highest Risk Campus Area: Block B
+
+===========================================================================
+ All 6 C Native Engine Modules verified successfully with zero errors!
+===========================================================================
 ```
 
 ---
 
-## 4. Web & Android WebAssembly Integration
-The C scoring algorithm is compiled to a high-performance **WebAssembly (`matcher.wasm`)** binary.
-In `index.html`, the browser and Android WebView load this WebAssembly module directly:
-- `cMatcherExports.score_pair(same_cat, loc_score, within_week, shared_words)`
-- `cMatcherExports.percent_of(score)`
-- `cMatcherExports.is_match(score)`
-- `cMatcherExports.spatial_score(x1, y1, x2, y2, same_zone)`
-- `cMatcherExports.spatial_dist_sq(x1, y1, x2, y2)`
+## 5. Web & Mobile WebAssembly Integration
+The core mathematical similarity, spatial distance, and synonym functions are compiled into **`matcher.wasm`** and loaded inside `index.html` via `cMatcherExports`:
+- `score_pair(c, loc_score, w, s)`
+- `spatial_score(x1, y1, x2, y2, same_zone)`
+- `spatial_dist_sq(x1, y1, x2, y2)`
+- `percent_of(score)`
+- `is_match(score)`
 
-This ensures the exact C code logic runs natively on both the live website and the Android APK with sub-millisecond execution times and zero server dependencies.
+This provides native speed, zero server costs, and consistent evaluation across both the web app and the Android WebView APK.
