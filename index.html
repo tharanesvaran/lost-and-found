@@ -549,8 +549,8 @@ function renderLogin(){
       <div class="feat-card">
         <div class="feat-ic">${ic('spark')}</div>
         <div class="feat-body">
-          <h3>Smart AI Match Detection</h3>
-          <p>Continuous comparison across category, location, dates, and keywords. Owners are notified with high-accuracy suggestions (75% or higher).</p>
+          <h3>Native C Match &amp; Spatial Geometry Engine</h3>
+          <p>Powered by a C WebAssembly engine with Lexical Synonym Canonicalization (specs &harr; spectacles) and 2D Euclidean spatial radius decay math across campus coordinates.</p>
         </div>
       </div>
       <div class="feat-card">
@@ -848,8 +848,9 @@ AFTER.add=()=>{const sync=()=>{const c=$('#ac').value,v=VALUABLES.includes(c),s=
   $('#af').onsubmit=async e=>{e.preventDefault();const cat=$('#ac').value,sens=SENSITIVE.includes(cat),hold=S.settings.holdDays||45,d=new Date($('#ad').value).getTime()||now();
     const fin=$('#af2').value.trim(),m=fin.match(/\(([^)]+)\)$/),fp=S.profiles.find(p=>m&&p.roll===m[1])||S.profiles.find(p=>p.name.toLowerCase()===fin.toLowerCase());
     if(fin&&!fp){$('#lerr').textContent='No registered student matches that finder. Pick one from the suggestions, or leave it blank.';return}
-    const id=S.db.collection('itemPrivate').doc().id,base={cat,desc:$('#ads').value.trim(),loc:$('#al').value,date:$('#ad').value,foundAt:d,holdDays:hold,expiresAt:d+hold*DAY,status:'unclaimed'};
-    const priv={...base,id,privateNote:$('#apn').value.trim(),finder:fin,finderUid:fp?.uid||'',storage:$('#as').value.trim(),locked:$('#alk').checked,locX:(S.pick&&S.pick.zone===$('#al').value)?S.pick.x:null,locY:(S.pick&&S.pick.zone===$('#al').value)?S.pick.y:null,sensitive:sens,q1:sens?'':$('#q1').value,a1:sens?'':$('#r1').value,q2:sens?'':$('#q2').value,a2:sens?'':$('#r2').value,loggedBy:S.adminName};
+    const itX=(S.pick&&S.pick.zone===$('#al').value)?S.pick.x:null,itY=(S.pick&&S.pick.zone===$('#al').value)?S.pick.y:null;
+    const id=S.db.collection('itemPrivate').doc().id,base={cat,desc:$('#ads').value.trim(),loc:$('#al').value,date:$('#ad').value,foundAt:d,holdDays:hold,expiresAt:d+hold*DAY,status:'unclaimed',x:itX,y:itY,locX:itX,locY:itY};
+    const priv={...base,id,privateNote:$('#apn').value.trim(),finder:fin,finderUid:fp?.uid||'',storage:$('#as').value.trim(),locked:$('#alk').checked,locX:itX,locY:itY,sensitive:sens,q1:sens?'':$('#q1').value,a1:sens?'':$('#r1').value,q2:sens?'':$('#q2').value,a2:sens?'':$('#r2').value,loggedBy:S.adminName};
     try{await S.db.collection('itemPrivate').doc(id).set(priv);if(!sens)await S.db.collection('items').doc(id).set({...base,q1:priv.q1,q2:priv.q2});
       S.prefill=null;confetti();toast('Item logged');S.view='dash';draw()}catch(err){$('#lerr').textContent='Could not save the item.'}}};
 
@@ -1084,12 +1085,17 @@ function editStudentModal(student, isSelf=false){
 
 /* ---------- C WebAssembly Similarity Match Engine (c_matcher/matcher.c) ----------
    Compiled from pure C into WebAssembly (matcher.wasm).
+   Features:
+     - Lexical Synonym Canonicalization (specs <-> spectacles -> glasses)
+     - 2D Euclidean Spatial Distance & Campus Radius Decay Engine (d^2 <= 2025 / 16900)
    Functions exported from C:
-     - score_pair(same_cat, same_loc, within_week, shared_words) -> score (0..12)
+     - score_pair(same_cat, loc_score, within_week, shared_words) -> score (0..12)
      - percent_of(score) -> percent (0..100)
      - is_match(score) -> 1 or 0 (threshold >= 75%)
+     - spatial_score(x1, y1, x2, y2, same_zone) -> loc_score (0, 1, or 2)
+     - spatial_dist_sq(x1, y1, x2, y2) -> distance_squared
 */
-const C_WASM_B64='AGFzbQEAAAABDgJgBH9/f38Bf2ABfwF/AwQDAAEBByYDCnNjb3JlX3BhaXIAAApwZXJjZW50X29mAAEIaXNfbWF0Y2gAAgo3Ax4AIABBA2wgAUECbGogAmpBAyADIANBA0obQQJsagsOACAAQeQAbEEGakEMbQsHACAAQQlOCw==';
+const C_WASM_B64='AGFzbQEAAAABFwNgBH9/f38Bf2ABfwF/YAV/f39/fwF/AwYFAAEBAgAHSAUKc2NvcmVfcGFpcgAACnBlcmNlbnRfb2YAAQhpc19tYXRjaAACDXNwYXRpYWxfc2NvcmUAAw9zcGF0aWFsX2Rpc3Rfc3EABAqnAQUbACAAQQNsIAFqIAJqQQMgAyADQQNKG0ECbGoLDgAgAEHkAGxBBmpBDG0LBwAgAEEJTgtYAQJ/IABBAEwgAkEATHIEfyAEBH9BAgVBAAsFIAAgAmsiBSAFbCABIANrIgYgBmxqIQUgBUHpD0wEf0ECBSAFQYSEAUwEf0EBBSAEBH9BAQVBAAsLCwsLCxkBAn8gACACayIEIARsIAEgA2siBSAFbGoL';
 let cMatcherExports=null;
 
 (function initCMatcher(){
@@ -1101,7 +1107,7 @@ let cMatcherExports=null;
     const wasmModule=new WebAssembly.Module(bytes);
     const wasmInstance=new WebAssembly.Instance(wasmModule);
     cMatcherExports=wasmInstance.exports;
-    console.log('[C Matcher] Native C WebAssembly engine initialized successfully from c_matcher/matcher.c (matcher.wasm).');
+    console.log('[C Matcher] Native C Spatial Distance & Lexical Match Engine initialized from c_matcher/matcher.c (matcher.wasm).');
   }catch(e){
     console.warn('[C Matcher] WebAssembly fallback active:', e);
   }
@@ -1146,19 +1152,37 @@ function scorePair(l,lw,it,iw){
   const withinWeek=(Math.abs(mins(l.when)-mins(it.foundAt))<=MATCH.weekMin)?1:0;
   const shared=Math.min(3,lw.filter(x=>iw.includes(x)).length);
 
+  const lx=Number(l.x)||0;
+  const ly=Number(l.y)||0;
+  const ix=Number(it.x||it.locX)||0;
+  const iy=Number(it.y||it.locY)||0;
+
+  let locScore=0;
+  if(cMatcherExports&&cMatcherExports.spatial_score){
+    locScore=cMatcherExports.spatial_score(lx, ly, ix, iy, sameLoc);
+  } else {
+    if(lx>0&&ix>0){
+      const d2=(lx-ix)*(lx-ix)+(ly-iy)*(ly-iy);
+      locScore=(d2<=2025)?2:(d2<=16900?1:(sameLoc?1:0));
+    } else {
+      locScore=sameLoc?2:0;
+    }
+  }
+
   let s=0;
   if(cMatcherExports&&cMatcherExports.score_pair){
-    s=cMatcherExports.score_pair(sameCat, sameLoc, withinWeek, shared);
+    s=cMatcherExports.score_pair(sameCat, locScore, withinWeek, shared);
   } else {
-    s=sameCat*3 + sameLoc*2 + withinWeek*1 + shared*2;
+    s=sameCat*3 + locScore + withinWeek*1 + shared*2;
   }
 
   let w=0;
   if(sameCat) w|=1;
-  if(sameLoc) w|=2;
+  if(locScore===2) w|=2;
+  else if(locScore===1) w|=16;
   if(withinWeek) w|=4;
   if(shared) w|=8;
-  w|=(shared<<4);
+  w|=(shared<<5);
 
   return {s, w};
 }
@@ -1178,7 +1202,7 @@ function findMatches(open,items){
       .sort((a,b)=>b.s-a.s).slice(0,MATCH.top);
     return{l,c}}).filter(r=>r.c.length);
 }
-const why=w=>[w&1?'Same category':'',w&2?'Same place':'',w&4?'Found within 7 days':'',w&8?(w>>4)+' matching keyword/synonym'+((w>>4)>1?'s':''):''].filter(Boolean).join(' · ');
+const why=w=>[w&1?'Same category':'',w&2?'Same spot/zone':(w&16?'Nearby zone (+1)':''),w&4?'Found within 7 days':'',w&8?(w>>5)+' matching keyword/synonym'+((w>>5)>1?'s':''):''].filter(Boolean).join(' · ');
 
 function getStudentMatches(){
   if(S.role!=='student')return [];

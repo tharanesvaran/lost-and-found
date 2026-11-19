@@ -10,9 +10,10 @@
  *
  * Scoring Formula:
  *   - Same Category:       +3 points
- *   - Same Campus Zone:    +2 points
+ *   - Spatial Proximity:   +2 points (Exact spot <= 45px or unpinned same zone)
+ *                          +1 point  (Nearby zone radius decay <= 130px)
  *   - Found within 7 days: +1 point
- *   - Shared 4+ ltr words: +2 points per word (capped at 3 words = max 6 points)
+ *   - Shared canonical:    +2 points per word (capped at 3 words = max 6 points)
  *   --------------------------------------------------------------------------
  *   Total Maximum Score:   12 points
  *   Percentage:            floor((score * 100 + 6) / 12)
@@ -29,59 +30,58 @@
 #ifndef MATCHER_H
 #define MATCHER_H
 
-/* Maximum possible similarity score */
 #define MATCH_MAX_SCORE 12
-
-/* Minimum percentage required to suggest an item to a student */
 #define MATCH_MIN_PERCENT 75
-
-/* Minimum score required to suggest an item (equivalent to 75%) */
 #define MATCH_MIN_SCORE 9
-
-/* Maximum time proximity window: 7 days in minutes (7 * 24 * 60) */
 #define MATCH_WEEK_MINUTES 10080
 
-/* Scoring weight values */
 #define WEIGHT_CATEGORY 3
-#define WEIGHT_LOCATION 2
+#define WEIGHT_LOCATION_EXACT 2
+#define WEIGHT_LOCATION_NEARBY 1
 #define WEIGHT_DATE_PROXIMITY 1
 #define WEIGHT_SHARED_WORD 2
 #define MAX_SHARED_WORDS_SCORED 3
 
-/* Bitmask flags explaining why an item matched */
+#define SPATIAL_EXACT_RADIUS_SQ   2025   /* <= 45 px radius: Exact Spot (+2 pts) */
+#define SPATIAL_NEARBY_RADIUS_SQ  16900  /* <= 130 px radius: Nearby Zone (+1 pt) */
+
 #define WHY_SAME_CATEGORY    (1 << 0) /* 1: Same category (+3) */
-#define WHY_SAME_LOCATION    (1 << 1) /* 2: Same campus zone (+2) */
+#define WHY_SAME_LOCATION    (1 << 1) /* 2: Exact spot / zone (+2) */
 #define WHY_WITHIN_WEEK      (1 << 2) /* 4: Found within 7 days (+1) */
 #define WHY_KEYWORD_MATCH    (1 << 3) /* 8: Has matching keywords (+2 per word, max 6) */
+#define WHY_NEARBY_LOCATION  (1 << 4) /* 16: Proximity match within campus radius (+1) */
 
-/* Structure representing an item (either reported lost or logged as found) */
 typedef struct {
     char id[64];
     char category[32];
     char location[64];
     char description[256];
-    long timestamp_minutes; /* Minutes since Unix epoch */
+    long timestamp_minutes;
+    int x;
+    int y;
 } Item;
 
-/* Structure representing similarity evaluation outcome */
 typedef struct {
-    int score;         /* 0 to 12 */
-    int percent;       /* 0 to 100% */
-    int why_flags;     /* Bitmask of reasons (WHY_*) */
-    int shared_words;  /* Count of common keywords */
-    int is_match;      /* 1 if percent >= 75 (score >= 9), 0 otherwise */
+    int score;
+    int percent;
+    int why_flags;
+    int shared_words;
+    int is_match;
+    int distance_sq;
 } MatchResult;
 
-/* Structure for campus synonym mapping / lexical canonicalization */
 typedef struct {
-    const char* canonical;        /* Canonical root term (e.g. "glasses") */
-    const char* aliases[8];       /* Common synonyms (e.g. "specs", "spectacles") */
+    const char* canonical;
+    const char* aliases[8];
     int alias_count;
 } SynonymGroup;
 
 int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, int* out_why_flags);
+int score_pair_spatial_c(int same_cat, int loc_score, int within_week, int shared_words, int* out_why_flags);
 int percent_of_c(int score);
 int is_match_c(int score);
+int calculate_spatial_distance_sq_c(int x1, int y1, int x2, int y2);
+int calculate_spatial_score_c(int x1, int y1, int x2, int y2, int same_zone);
 MatchResult evaluate_match_c(const Item* lost, const Item* found);
 const char* get_canonical_term_c(const char* word);
 
@@ -134,9 +134,40 @@ const char* get_canonical_term_c(const char* word) {
 }
 
 /**
- * Calculates raw score (0-12) and generates bitmask reason flags.
+ * Computes squared Euclidean distance: d^2 = (x1 - x2)^2 + (y1 - y2)^2
+ * Uses integer math to avoid floating-point square root overhead.
  */
-int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, int* out_why_flags) {
+int calculate_spatial_distance_sq_c(int x1, int y1, int x2, int y2) {
+    int dx = x1 - x2;
+    int dy = y1 - y2;
+    return (dx * dx) + (dy * dy);
+}
+
+/**
+ * Calculates spatial match score (0, 1, or 2 points) using campus map geometry:
+ *   - If coordinates missing (<= 0): fallback to same_zone ? 2 : 0
+ *   - Spot radius (dist <= 45px => d^2 <= 2025): 2 points
+ *   - Nearby zone radius (dist <= 130px => d^2 <= 16900): 1 point (spatial decay)
+ *   - Distant: same_zone ? 1 : 0
+ */
+int calculate_spatial_score_c(int x1, int y1, int x2, int y2, int same_zone) {
+    if (x1 <= 0 || x2 <= 0) {
+        return same_zone ? WEIGHT_LOCATION_EXACT : 0;
+    }
+    int d2 = calculate_spatial_distance_sq_c(x1, y1, x2, y2);
+    if (d2 <= SPATIAL_EXACT_RADIUS_SQ) {
+        return WEIGHT_LOCATION_EXACT;
+    }
+    if (d2 <= SPATIAL_NEARBY_RADIUS_SQ) {
+        return WEIGHT_LOCATION_NEARBY;
+    }
+    return same_zone ? WEIGHT_LOCATION_NEARBY : 0;
+}
+
+/**
+ * Calculates score (0-12) taking spatial location score (0, 1, or 2) directly.
+ */
+int score_pair_spatial_c(int same_cat, int loc_score, int within_week, int shared_words, int* out_why_flags) {
     int s = 0;
     int w = 0;
 
@@ -144,9 +175,12 @@ int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, 
         s += WEIGHT_CATEGORY;
         w |= WHY_SAME_CATEGORY;
     }
-    if (same_loc) {
-        s += WEIGHT_LOCATION;
+    if (loc_score == 2) {
+        s += WEIGHT_LOCATION_EXACT;
         w |= WHY_SAME_LOCATION;
+    } else if (loc_score == 1) {
+        s += WEIGHT_LOCATION_NEARBY;
+        w |= WHY_NEARBY_LOCATION;
     }
     if (within_week) {
         s += WEIGHT_DATE_PROXIMITY;
@@ -158,12 +192,19 @@ int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, 
         w |= WHY_KEYWORD_MATCH;
     }
     s += shared * WEIGHT_SHARED_WORD;
-    w |= (shared << 4); /* Store count of matching words in upper bits */
+    w |= (shared << 5); /* Shift past bit 4 */
 
     if (out_why_flags) {
         *out_why_flags = w;
     }
     return s;
+}
+
+/**
+ * Backward compatibility wrapper for binary location flag.
+ */
+int score_pair_c(int same_cat, int same_loc, int within_week, int shared_words, int* out_why_flags) {
+    return score_pair_spatial_c(same_cat, same_loc ? 2 : 0, within_week, shared_words, out_why_flags);
 }
 
 /**
@@ -210,11 +251,9 @@ int extract_keywords_c(const char* text, char tokens[][32], int max_tokens) {
                 buf[buf_idx++] = (char)tolower((unsigned char)ch);
             }
         } else {
-            if (buf_idx >= 3) { /* Minimum 3 letters */
+            if (buf_idx >= 3) {
                 buf[buf_idx] = '\0';
-                /* Canonicalize token using the C synonym dictionary */
                 const char* canon = get_canonical_term_c(buf);
-                /* Check if token is already present */
                 int exists = 0;
                 for (int j = 0; j < token_count; j++) {
                     if (strcmp(tokens[j], canon) == 0) {
@@ -251,7 +290,7 @@ int count_shared_keywords_c(char words1[][32], int count1, char words2[][32], in
 }
 
 /**
- * Evaluates similarity between a lost report and a found item.
+ * Evaluates similarity between a lost report and a found item with full spatial geometry.
  */
 MatchResult evaluate_match_c(const Item* lost, const Item* found) {
     MatchResult res;
@@ -260,24 +299,31 @@ MatchResult evaluate_match_c(const Item* lost, const Item* found) {
     /* 1. Category check */
     int same_cat = (strcasecmp(lost->category, found->category) == 0) ? 1 : 0;
 
-    /* 2. Campus zone check */
-    int same_loc = (strcasecmp(lost->location, found->location) == 0) ? 1 : 0;
+    /* 2. Campus zone / spatial geometry check */
+    int same_zone = (strcasecmp(lost->location, found->location) == 0) ? 1 : 0;
+    int loc_score = calculate_spatial_score_c(lost->x, lost->y, found->x, found->y, same_zone);
+
+    if (lost->x > 0 && found->x > 0) {
+        res.distance_sq = calculate_spatial_distance_sq_c(lost->x, lost->y, found->x, found->y);
+    } else {
+        res.distance_sq = -1;
+    }
 
     /* 3. Time proximity check (within 7 days = 10,080 minutes) */
     long diff = lost->timestamp_minutes - found->timestamp_minutes;
     if (diff < 0) diff = -diff;
     int within_week = (diff <= MATCH_WEEK_MINUTES) ? 1 : 0;
 
-    /* 4. Description keyword tokens overlap */
+    /* 4. Description keyword tokens overlap with synonym canonicalization */
     char l_tokens[32][32];
     char f_tokens[32][32];
     int l_count = extract_keywords_c(lost->description, l_tokens, 32);
     int f_count = extract_keywords_c(found->description, f_tokens, 32);
     int shared = count_shared_keywords_c(l_tokens, l_count, f_tokens, f_count);
 
-    /* 5. Compute total score and flags using core formula */
+    /* 5. Compute total score and flags */
     int flags = 0;
-    res.score = score_pair_c(same_cat, same_loc, within_week, shared, &flags);
+    res.score = score_pair_spatial_c(same_cat, loc_score, within_week, shared, &flags);
     res.why_flags = flags;
     res.shared_words = shared;
     res.percent = percent_of_c(res.score);
@@ -289,42 +335,43 @@ MatchResult evaluate_match_c(const Item* lost, const Item* found) {
 #ifndef NO_MAIN_TEST
 /**
  * Standalone CLI test harness for college project evaluation and demonstrations.
- * Compile: gcc matcher.c -o matcher
- * Run:     ./matcher
  */
 int main(void) {
     printf("===========================================================================\n");
     printf("    COLLEGE LOST & FOUND - C SMART SIMILARITY MATCHING ENGINE              \n");
-    printf("      (With Lexical Synonym Canonicalization: specs <-> spectacles)        \n");
+    printf("      (Lexical Synonyms + 2D Spatial Distance & Radius Decay Engine)       \n");
     printf("===========================================================================\n\n");
 
-    Item lost_items[5] = {
-        {"L01", "Accessories", "Library 2nd Floor", "Black specs with matte frame", 10000},
-        {"L02", "Electronics", "Library 2nd Floor", "Lost my mobile cellphone with clear case", 10000},
-        {"L03", "Bags", "CC Hall", "Blue Fastrack college backpack with water bottle", 20000},
-        {"L04", "Keys", "Block C Ground", "Set of bike keys with Honda metal keychain", 30000},
-        {"L05", "Stationery", "Block B", "Scientific calculator Casio fx-991EX", 40000}
+    Item lost_items[6] = {
+        {"L01", "Accessories", "Library 2nd Floor", "Black specs with matte frame", 10000, 100, 100},
+        {"L02", "Electronics", "Library 2nd Floor", "Lost my mobile cellphone with clear case", 10000, 100, 100},
+        {"L03", "Bags",        "CC Hall",           "Blue Fastrack college backpack with water bottle", 20000, 50, 240},
+        {"L04", "Keys",        "Block C Ground",    "Set of bike keys with Honda metal keychain", 30000, 190, 300},
+        {"L05", "Stationery",  "Block B",           "Scientific calculator Casio fx-991EX", 40000, 320, 270},
+        {"L06", "Earphones",   "Block B",           "White wireless airpods dropped near corridor", 50000, 308, 262}
     };
 
-    Item found_items[5] = {
-        {"F01", "Accessories", "Library 2nd Floor", "Found spectacles with black frame on table", 10200},
-        {"F02", "Electronics", "Library 2nd Floor", "Black smartphone found near charging desk", 10200},
-        {"F03", "Bags", "CC Hall", "Blue Fastrack backpack handed in by student", 21500},
-        {"F04", "Keys", "Block C Ground", "Silver keys with Honda keychain", 30400},
-        {"F05", "Bottles", "Cafeteria", "Green Milton steel water bottle", 48000}
+    Item found_items[6] = {
+        {"F01", "Accessories", "Library 2nd Floor", "Found spectacles with black frame on table", 10200, 110, 110},
+        {"F02", "Electronics", "Library 2nd Floor", "Black smartphone found near charging desk", 10200, 105, 108},
+        {"F03", "Bags",        "CC Hall",           "Blue Fastrack backpack handed in by student", 21500, 55, 235},
+        {"F04", "Keys",        "Block C Ground",    "Silver keys with Honda keychain", 30400, 192, 305},
+        {"F05", "Bottles",     "Cafeteria",         "Green Milton steel water bottle", 48000, 40, 50},
+        {"F06", "Earphones",   "Block C Walkway",   "Found white earbuds on walkway bench", 50200, 260, 280}
     };
 
-    printf("%-6s | %-12s | %-6s | %-7s | %-12s | %s\n", "PAIR", "CATEGORY", "SCORE", "PERCENT", "DECISION", "REASONS & SYNONYMS");
+    printf("%-6s | %-12s | %-6s | %-7s | %-12s | %s\n", "PAIR", "CATEGORY", "SCORE", "PERCENT", "DECISION", "REASONS & SPATIAL GEOMETRY");
     printf("-------------------------------------------------------------------------------------------\n");
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         MatchResult r = evaluate_match_c(&lost_items[i], &found_items[i]);
-        char reasons[128] = "";
+        char reasons[160] = "";
 
-        if (r.why_flags & WHY_SAME_CATEGORY) strcat(reasons, "Category(+3) ");
-        if (r.why_flags & WHY_SAME_LOCATION) strcat(reasons, "Place(+2) ");
-        if (r.why_flags & WHY_WITHIN_WEEK)   strcat(reasons, "7-Days(+1) ");
-        if (r.why_flags & WHY_KEYWORD_MATCH) strcat(reasons, "Keywords/Synonyms ");
+        if (r.why_flags & WHY_SAME_CATEGORY)   strcat(reasons, "Category(+3) ");
+        if (r.why_flags & WHY_SAME_LOCATION)   strcat(reasons, "Spot(+2) ");
+        if (r.why_flags & WHY_NEARBY_LOCATION) strcat(reasons, "NearbyDecay(+1) ");
+        if (r.why_flags & WHY_WITHIN_WEEK)     strcat(reasons, "7-Days(+1) ");
+        if (r.why_flags & WHY_KEYWORD_MATCH)   strcat(reasons, "Synonyms/Words ");
 
         printf("Pair %d | %-12s | %2d/12 | %5d%%  | %-12s | %s\n",
             i + 1,
@@ -336,8 +383,9 @@ int main(void) {
     }
 
     printf("-------------------------------------------------------------------------------------------\n");
-    printf("Rule: Minimum threshold is >= 75%% similarity (Score 9 or higher).\n");
-    printf("Synonym canonicalization allows 'specs' to match 'spectacles' and 'mobile' to match 'smartphone'!\n\n");
+    printf("Pair 6 Highlights: Lost at Block B (308, 262), Found at Block C Walkway (260, 280).\n");
+    printf("Distance squared = (308-260)^2 + (262-280)^2 = 48^2 + (-18)^2 = 2304 + 324 = 2628 <= 16900.\n");
+    printf("Result: Spatial Radius Decay engine awards +1 Proximity point! With synonyms, score is 9/12 (75%%)!\n\n");
 
     return 0;
 }
