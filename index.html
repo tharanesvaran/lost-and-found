@@ -420,7 +420,19 @@ function sbDb(sb){
   const doc=(col,id)=>{id=id||rid();return{id,path:col+'/'+id,
     async get(){const r=await sb.from('docs').select('data').eq('col',col).eq('id',id).maybeSingle();if(r.error)throw r.error;return{id,exists:!!r.data,data:()=>r.data&&r.data.data}},
     async set(v){const r=await sb.from('docs').upsert({col,id,data:clean(v)},{onConflict:'col,id'});if(r.error)throw r.error;ping(col)},
-    async update(v){const r=await sb.rpc('doc_update',{p_col:col,p_id:id,p_patch:clean(v)});if(r.error)throw r.error;ping(col)},
+    async update(v){
+      try{
+        const cur=await sb.from('docs').select('data').eq('col',col).eq('id',id).maybeSingle();
+        const merged={...((cur&&cur.data&&cur.data.data)||{}),...clean(v)};
+        const r=await sb.from('docs').upsert({col,id,data:merged},{onConflict:'col,id'});
+        if(r.error)throw r.error;
+        ping(col);
+      }catch(err){
+        const r=await sb.rpc('doc_update',{p_col:col,p_id:id,p_patch:clean(v)});
+        if(r.error)throw r.error;
+        ping(col);
+      }
+    },
     async delete(){const r=await sb.from('docs').delete().eq('col',col).eq('id',id);if(r.error)throw r.error;ping(col)},
     onSnapshot(next,err){return live(col,async()=>{const r=await sb.from('docs').select('data').eq('col',col).eq('id',id).maybeSingle();
       if(r.error){err&&err(r.error);return}next({id,exists:!!r.data,data:()=>r.data&&r.data.data})})}}};
@@ -487,7 +499,16 @@ async function boot(){
 }
 async function saveFile(name,data){const b=data instanceof Blob?data:new Blob([data],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
 
-async function putMap(col,uid,key,val){const r=S.db.collection(col).doc(uid),d=await r.get();if(d.exists)await r.update({[key]:val});else await r.set({[key]:val})}
+async function putMap(col,uid,key,val){
+  const r=S.db.collection(col).doc(uid);
+  try{
+    const d=await r.get();
+    const existing=d.exists?(d.data()||{}):{};
+    await r.set({...existing,[key]:val});
+  }catch(e){
+    await r.set({[key]:val});
+  }
+}
 const who=c=>S.profiles.find(p=>p.uid===c.studentId)||{name:'Student',roll:''};
 /* ---------- login ---------- */
 function renderLogin(){
@@ -639,6 +660,28 @@ function renderOnboard(){
 /* ---------- app shell ---------- */
 let subsStarted=false;
 const UNSUBS=[];
+function extractLostReports(docs){
+  const list=[];
+  (docs||[]).forEach(d=>{
+    if(!d)return;
+    if((d.kind==='lost'||(d.desc&&d.cat))&&d.studentId){
+      list.push(d);
+      return;
+    }
+    Object.entries(d).forEach(([k,v])=>{
+      if(k!=='id'&&v&&typeof v==='object'&&(v.kind==='lost'||(v.desc&&v.cat))){
+        list.push({id:k,...v,studentId:v.studentId||d.id});
+      }
+    });
+  });
+  const seen=new Set();
+  return list.filter(r=>{
+    const key=r.id||(r.studentId+'_'+r.desc);
+    if(seen.has(key))return false;
+    seen.add(key);
+    return true;
+  }).sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
 function sub(path,key,map){const ref=S.db.collection(path);const q=(S.role!=='admin'&&path==='claims'&&ref.where)?ref.where('studentId','==',S.me.id):ref;UNSUBS.push(q.onSnapshot(s=>{S[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(map)map();changed()},()=>{S[key]=[];changed()}))}
 function startApp(){
   if(!subsStarted){subsStarted=true;
@@ -647,7 +690,7 @@ function startApp(){
     if(S.role==='admin'){
       sub('itemPrivate','priv',sweepExpiry);
       sub('claimAnswers','answers');
-      sub('lost','lost',()=>{S.lost=S.lost.flatMap(d=>Object.values(d).filter(v=>v&&typeof v==='object'));checkAdminLostReports()});
+      sub('lost','lost',()=>{S.lost=extractLostReports(S.lost);checkAdminLostReports()});
       sub('profiles','profiles');
       sub('handovers','handovers');
       sub('adminAllowlist','allowlist');
@@ -672,7 +715,7 @@ function badge(v){
   if(S.role==='admin'){
     if(v==='claims')return S.claims.filter(c=>c.status==='requested').length;
     if(v==='matches'){
-      const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');
+      const open=S.lost.filter(l=>l.status!=='resolved'),items=S.priv.filter(i=>i.status==='unclaimed');
       try{return findMatches(open,items).length}catch(e){return 0}
     }
     return 0;
@@ -716,7 +759,7 @@ function draw(switchOnly=false){
   paint();
   window.scrollTo(0,0);
 }
-function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','admins','handover','reports','settings','profile'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;if(S.view==='browse'&&$('#browse-items')){drawBrowseItems()}else if(S.view==='dash'&&$('#ilist')){drawItems()}else if(S.view==='students'&&$('#slist')){drawStudents()}else{paint(false)}$$('.nv .dot').forEach(d=>d.remove());const navItems=(S.role==='admin')?getAdminNav():NAV.student;navItems.forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
+function changed(){if(!S.role)return;const live=['browse','myclaims','dash','claims','matches','students','admins','handover','reports','settings','profile'];if(live.includes(S.view)){clearTimeout(changed.t);changed.t=setTimeout(()=>{if(!S.role||!live.includes(S.view))return;if(S.view==='browse'&&$('#browse-items')){drawBrowseItems()}else if(S.view==='students'&&$('#slist')){drawStudents()}else{paint(false)}$$('.nv .dot').forEach(d=>d.remove());const navItems=(S.role==='admin')?getAdminNav():NAV.student;navItems.forEach(([v],i)=>{const n=badge(v);if(n)$$('.nv[data-v]')[i]?.insertAdjacentHTML('beforeend',`<span class="dot">${n}</span>`)})},120)}}
 function head(t,p,extra=''){return `<div class="top"><div><h2>${t}</h2>${p?`<p>${p}</p>`:''}</div><div class="tools">${extra}<button class="btn ghost sm" id="theme" title="Toggle theme">${ic('sun')}</button></div></div>`}
 function paint(anim=true){
   const v=$('#view');const fn=VIEWS[S.view];if(!fn)return;
@@ -828,9 +871,17 @@ VIEWS.handin=()=>head('Found something?','Only the admin office logs found items
  <div class="banner rise" style="margin-top:14px">${ic('shield')}Valuables like phones, wallets and laptops go into a locked cabinet. IDs, ATM cards and certificates are returned by direct contact.</div>`;
 function afterReport(kind){bindMap('pm');$('#rf').onsubmit=async e=>{e.preventDefault();if(!S.pick){$('#lerr').textContent='Tap the map to mark the location.';return}
   const p=S.profile||{},id=S.db.collection(kind).doc().id;
-  const rec={id,kind,studentId:S.me.id,name:p.name||S.me.name,roll:p.roll||'',cat:$('#rc').value,desc:$('#rt').value.trim(),zone:S.pick.zone,x:S.pick.x,y:S.pick.y,when:$('#rd').value,ts:now(),status:kind==='found'?'new':'open'};
-  try{await putMap(kind,S.me.id,id,rec);await S.db.doc('data/users/'+S.me.id+'/rep_'+id).set(rec);S.pick=null;confetti();toast(kind==='found'?'Thanks! Now hand the item to the admin office.':'Lost report filed. We will flag matches.');S.view='profile';draw()}
-  catch(err){$('#lerr').textContent='Could not send. Ask the office for contributor access.'}}}
+  const rec={id,kind,studentId:S.me.id,name:p.name||S.me.name||'Student',roll:p.roll||'',phone:p.phone||'',email:p.email||S.me.email||'',cat:$('#rc').value,desc:$('#rt').value.trim(),zone:S.pick.zone,x:S.pick.x,y:S.pick.y,when:$('#rd').value,ts:now(),status:kind==='found'?'new':'open'};
+  try{
+    await putMap(kind,S.me.id,id,rec);
+    await S.db.doc('data/users/'+S.me.id+'/rep_'+id).set(rec).catch(()=>{});
+    if(!S.reports.some(r=>r.id===id)) S.reports.push(rec);
+    if(kind==='lost'&&!S.lost.some(l=>l.id===id)) S.lost.push(rec);
+    S.pick=null;confetti();
+    toast(kind==='found'?'Thanks! Now hand the item to the admin office.':'Lost report filed. We will flag matches.');
+    S.view='profile';draw();
+  }
+  catch(err){console.error(err);$('#lerr').textContent='Could not send. Check your connection and try again.'}}}
 AFTER.lostrep=()=>afterReport('lost');
 function historyCard(){const me=S.me.id,rt=S.returns.find(x=>x.id===me)||{count:0};
   const ret=Object.entries(rt).filter(([k])=>k.startsWith('log_')).map(([,v])=>({t:'returned',desc:v.desc,at:v.at}));
@@ -854,23 +905,227 @@ AFTER.profile=()=>{
 
 /* ================= ADMIN VIEWS ================= */
 const allItems=()=>S.priv.slice().sort((a,b)=>b.foundAt-a.foundAt);
-VIEWS.dash=()=>{const it=allItems(),c=s=>it.filter(i=>i.status===s).length;
+async function resolveLostReport(reportId,studentId){
+  try{
+    if(studentId){
+      const lDoc=S.db.collection('lost').doc(studentId);
+      const d=await lDoc.get().catch(()=>null);
+      if(d&&d.exists&&d.data()&&d.data()[reportId]){
+        const cur=d.data()[reportId];
+        await lDoc.set({...d.data(),[reportId]:{...cur,status:'resolved'}});
+      }else{
+        await S.db.collection('lost').doc(reportId).update({status:'resolved'}).catch(()=>{});
+      }
+      await S.db.doc('data/users/'+studentId+'/rep_'+reportId).update({status:'resolved'}).catch(()=>{});
+    }else{
+      await S.db.collection('lost').doc(reportId).update({status:'resolved'}).catch(()=>{});
+    }
+    const idx=S.lost.findIndex(x=>x.id===reportId);
+    if(idx>=0)S.lost[idx].status='resolved';
+    toast('Lost report marked resolved');
+    if(S.view==='dash')drawItems();
+    else if(S.view==='matches')paint(false);
+  }catch(err){console.error(err);toast('Could not resolve report: '+(err.message||'error'))}
+}
+
+VIEWS.dash=()=>{
+  const it=allItems(),c=s=>it.filter(i=>i.status===s).length;
   const roleName=S.isManager?'Manager':'Admin';
+  const openLost=S.lost.filter(l=>l.status!=='resolved');
+  const unclaimedItems=it.filter(i=>i.status==='unclaimed');
+  let matchCount=0;
+  try{matchCount=findMatches(openLost,unclaimedItems).length}catch(e){}
+  const pendingClaims=S.claims.filter(x=>x.status==='requested').length;
+
   return head('Dashboard',`Signed in as ${esc(S.adminName)} (${roleName})`,`<button class="btn sm" data-v="add">${ic('plus')}Add item</button>`)+
-  `<div class="stats">${[['Unclaimed',c('unclaimed'),'var(--info)'],['Claimed',c('claimed'),'var(--sun)'],['Returned',c('returned'),'var(--good)'],['Expired',c('expired'),'var(--bad)'],['Pending claims',S.claims.filter(x=>x.status==='requested').length,'var(--hot)']].map(([l,n,col],k)=>`<div class="stat rise" style="--c:${col};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
-  <div class="row" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search items, places, finders" value="${esc(S.q)}" style="max-width:420px"></div>
-  <div class="chips">${['all','unclaimed','claimed','returned','expired'].map(s=>`<button class="chip ${S.filter===s?'on':''}" data-f="${s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}</div><div id="ilist" class="list"></div>`};
-function drawItems(){const q=S.q.toLowerCase();const l=allItems().filter(i=>(['all','browse'].includes(S.filter)||S.filter===i.status)&&(!q||JSON.stringify([i.desc,i.cat,i.loc,i.finder,i.storage,i.privateNote]).toLowerCase().includes(q)));
-  $('#ilist').innerHTML=l.length?l.map((i,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}"><div class="row">${i.status==='returned'?`<div class="ic">${ic('check')}</div>`:ring(i)}<div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${esc(i.desc)}</b>${pill(i.status)}${i.locked?`<span class="pill p-lock">${ic('lock')} Locked cabinet</span>`:''}${i.sensitive?'<span class="pill p-lock">Not public</span>':''}${i.sample?'<span class="pill p-new">Sample</span>':''}</div>
-   <div class="meta"><span>${ic(catIcon(i.cat))}${esc(i.cat)}</span><span>${ic('pin')}${esc(i.loc)}</span><span>${ic('clock')}${fmtDate(i.date)}</span><span>${ic('box')}${esc(i.storage||'No shelf')}</span>${i.finder?`<span>${ic('user')}${esc(i.finder)}</span>`:''}</div>
-   ${i.privateNote?`<div class="meta"><span>${ic('lock')}Private: ${esc(i.privateNote)}</span></div>`:''}
-   ${i.sensitive&&i.status==='unclaimed'?`<div class="warn" style="margin:8px 0 0">Contact the owner directly using college records. Search the Students tab by name or roll number.</div>`:''}
-   ${i.status==='expired'?`<div class="row" style="margin-top:8px;gap:8px"><select class="in" style="max-width:220px" data-disp="${i.id}"><option value="">Choose outcome</option>${['Donated','Disposed','Welfare fund'].map(o=>`<option ${i.disposition===o?'selected':''}>${o}</option>`).join('')}</select></div>`:''}</div>
-   <div style="display:grid;gap:6px">${i.status==='unclaimed'&&i.sensitive?`<button class="btn sm" data-direct="${i.id}">Mark returned</button>`:''}<button class="btn ghost sm" data-del="${i.id}">Remove</button></div></div></article>`).join(''):empty('box','No items here','Log the first item with Add item, or change the filter.');
+  `<div class="stats">
+    ${[
+      ['Unclaimed found',c('unclaimed'),'var(--info)','unclaimed'],
+      ['Student lost reports',openLost.length,'var(--hot)','lost'],
+      ['Matches (75%+)',matchCount,'var(--brand)','matches_view'],
+      ['Pending claims',pendingClaims,'var(--sun)','claims_view'],
+      ['Returned to owner',c('returned'),'var(--good)','returned'],
+      ['Expired items',c('expired'),'var(--bad)','expired']
+    ].map(([l,n,col,act],k)=>`
+      <div class="stat rise" style="--c:${col};--i:${k};cursor:pointer" data-stat-act="${act}">
+        <b data-count="${n}">0</b>
+        <span>${l}</span>
+      </div>`).join('')}
+  </div>
+  ${matchCount?`<div class="banner rise" style="background:var(--brand-soft);border:1px solid var(--brand);color:var(--brand);cursor:pointer;margin-bottom:14px" onclick="S.view='matches';draw(true)">${ic('spark')}<b>${matchCount} High-Accuracy Match${matchCount>1?'es':''} (75%+)</b> detected between student lost reports and unclaimed found items! Tap to view in Matches &rarr;</div>`:''}
+  ${openLost.length&&!matchCount?`<div class="banner rise" style="background:var(--surface2);border:1px solid var(--line);margin-bottom:14px">${ic('pin')}<b>${openLost.length} Open Student Lost Report${openLost.length>1?'s':''}</b> registered on campus. When staff log matching items, alerts appear automatically.</div>`:''}
+  <div class="row" style="margin-bottom:12px"><input class="in" id="q" placeholder="Search items, lost reports, finders, students, places" value="${esc(S.q)}" style="max-width:480px"></div>
+  <div class="chips">${[
+    ['all','All'],
+    ['unclaimed',`Unclaimed (${c('unclaimed')})`],
+    ['lost',`Lost reports (${openLost.length})`],
+    ['claimed',`Claimed (${c('claimed')})`],
+    ['returned',`Returned (${c('returned')})`],
+    ['expired',`Expired (${c('expired')})`]
+  ].map(([s,label])=>`<button class="chip ${S.filter===s?'on':''}" data-f="${s}">${label}</button>`).join('')}</div>
+  <div id="ilist" class="list" style="padding-bottom:56px"></div>`;
+};
+
+function drawItems(){
+  const q=(S.q||'').toLowerCase().trim();
+  const el=$('#ilist');
+  if(!el)return;
+
+  const it=allItems();
+  const openLost=S.lost.filter(l=>l.status!=='resolved');
+  const unclaimedItems=it.filter(i=>i.status==='unclaimed');
+
+  const filteredLost=S.lost.filter(l=>{
+    if(S.filter!=='all'&&S.filter!=='lost')return false;
+    if(S.filter==='all'&&l.status==='resolved')return false;
+    if(!q)return true;
+    const txt=(l.desc+' '+(l.name||'')+' '+(l.roll||'')+' '+(l.cat||'')+' '+(l.zone||'')+' '+(l.phone||'')+' '+(l.email||'')).toLowerCase();
+    return txt.includes(q);
+  });
+
+  const filteredItems=it.filter(i=>{
+    if(S.filter==='lost')return false;
+    if(S.filter!=='all'&&S.filter!==i.status)return false;
+    if(!q)return true;
+    const txt=(i.desc+' '+(i.cat||'')+' '+(i.loc||'')+' '+(i.finder||'')+' '+(i.storage||'')+' '+(i.privateNote||'')).toLowerCase();
+    return txt.includes(q);
+  });
+
+  const renderLostCard=(l,n)=>{
+    const p=S.profiles.find(x=>x.uid===l.studentId)||{};
+    const studentName=l.name||p.name||'Student';
+    const rollNo=l.roll||p.roll||'';
+    const phone=l.phone||p.phone||'';
+    const email=l.email||p.email||'';
+    let repMatches=[];
+    try{repMatches=findMatches([l],unclaimedItems)}catch(e){}
+    const bestMatch=repMatches[0]?.c?.[0];
+
+    return `<article class="card tilt rise stud-card" style="--i:${Math.min(n,8)};border-left:4px solid var(--hot)">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div class="av" style="background:var(--hot-soft);color:var(--hot);flex:none">${esc((studentName||'?')[0])}</div>
+        <div class="stud-card-body">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+            <div>
+              <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+                <b style="font-size:16px;color:var(--fg);word-break:break-word">${esc(l.desc)}</b>
+                <span class="pill ${l.status==='resolved'?'p-returned':'p-expired'}">${l.status==='resolved'?'Resolved':'Lost Report'}</span>
+                ${bestMatch?`<span class="pill p-new" style="cursor:pointer" onclick="S.view='matches';draw(true)">${ic('spark')}${bestMatch.p}% match</span>`:''}
+              </div>
+              <div class="meta" style="margin-top:4px">
+                <span>${ic('user')}<b>${esc(studentName)}</b>${rollNo?` (${esc(rollNo)})`:''}</span>
+                <span>${ic(catIcon(l.cat))}${esc(l.cat)}</span>
+                <span>${ic('pin')}${esc(l.zone||'Campus')}</span>
+                <span>${ic('clock')}Lost ${fmtDate(l.when||l.ts)}</span>
+              </div>
+              ${(phone||email)?`<div class="meta" style="margin-top:4px;word-break:break-all">
+                ${phone?`<span>${ic('phone')}${esc(phone)}</span>`:''}
+                ${email?`<span>${ic('mail')}${esc(email)}</span>`:''}
+              </div>`:''}
+            </div>
+          </div>
+          ${bestMatch?`<div class="banner" style="margin:10px 0 0;padding:10px 14px;background:var(--brand-soft);border:1px solid var(--brand);color:var(--brand);cursor:pointer;border-radius:12px;font-size:13px" onclick="S.view='matches';draw(true)">
+            ${ic('spark')}<b>${bestMatch.p}% Match found with stored item:</b> "${esc(bestMatch.i.desc)}" (${esc(bestMatch.i.storage||'Admin office')}) · <u>View in Matches &rarr;</u>
+          </div>`:''}
+          <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+            ${l.status!=='resolved'?`<button class="btn sm" data-resolve-lost="${esc(l.id)}" data-student="${esc(l.studentId||'')}">${ic('check')}Mark resolved</button>`:''}
+            ${bestMatch?`<button class="btn ghost sm" onclick="S.view='matches';draw(true)">${ic('spark')}View Match</button>`:''}
+          </div>
+        </div>
+      </div>
+    </article>`;
+  };
+
+  const renderFoundCard=(i,n)=>`<article class="card tilt rise" style="--i:${Math.min(n,8)}">
+    <div class="row">
+      ${i.status==='returned'?`<div class="ic">${ic('check')}</div>`:ring(i)}
+      <div class="grow">
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <b>${esc(i.desc)}</b>
+          ${pill(i.status)}
+          ${i.locked?`<span class="pill p-lock">${ic('lock')} Locked cabinet</span>`:''}
+          ${i.sensitive?'<span class="pill p-lock">Not public</span>':''}
+          ${i.sample?'<span class="pill p-new">Sample</span>':''}
+        </div>
+        <div class="meta">
+          <span>${ic(catIcon(i.cat))}${esc(i.cat)}</span>
+          <span>${ic('pin')}${esc(i.loc)}</span>
+          <span>${ic('clock')}${fmtDate(i.date)}</span>
+          <span>${ic('box')}${esc(i.storage||'No shelf')}</span>
+          ${i.finder?`<span>${ic('user')}${esc(i.finder)}</span>`:''}
+        </div>
+        ${i.privateNote?`<div class="meta"><span>${ic('lock')}Private: ${esc(i.privateNote)}</span></div>`:''}
+        ${i.sensitive&&i.status==='unclaimed'?`<div class="warn" style="margin:8px 0 0">Contact the owner directly using college records. Search the Students tab by name or roll number.</div>`:''}
+        ${i.status==='expired'?`<div class="row" style="margin-top:8px;gap:8px"><select class="in" style="max-width:220px" data-disp="${i.id}"><option value="">Choose outcome</option>${['Donated','Disposed','Welfare fund'].map(o=>`<option ${i.disposition===o?'selected':''}>${o}</option>`).join('')}</select></div>`:''}
+      </div>
+      <div style="display:grid;gap:6px">
+        ${i.status==='unclaimed'&&i.sensitive?`<button class="btn sm" data-direct="${i.id}">Mark returned</button>`:''}
+        <button class="btn ghost sm" data-del="${i.id}">Remove</button>
+      </div>
+    </div>
+  </article>`;
+
+  let html='';
+  if(S.filter==='lost'){
+    html=filteredLost.length
+      ? filteredLost.map((l,n)=>renderLostCard(l,n)).join('')
+      : empty('pin','No lost reports found','Student lost reports will appear here as soon as they submit them.');
+  } else if(S.filter==='all'){
+    const hasLost=filteredLost.length>0;
+    const hasFound=filteredItems.length>0;
+    if(!hasLost && !hasFound){
+      html=empty('box','No items or reports','Log an item with Add item, or wait for student lost reports.');
+    } else {
+      if(hasLost){
+        html+=`<div class="sec" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span>Student Lost Reports (${filteredLost.length} active)</span>
+          <button class="btn ghost sm" id="allToLostFilterBtn">View all lost &rarr;</button>
+        </div>`+filteredLost.slice(0,5).map((l,n)=>renderLostCard(l,n)).join('');
+      }
+      if(hasFound){
+        html+=`<div class="sec" style="${hasLost?'margin-top:24px':'margin-top:0'}">Found Items in Storage (${filteredItems.length})</div>`+
+          filteredItems.map((i,n)=>renderFoundCard(i,n)).join('');
+      }
+    }
+  } else {
+    html=filteredItems.length
+      ? filteredItems.map((i,n)=>renderFoundCard(i,n)).join('')
+      : empty('box','No items here','No items match this status filter.');
+  }
+
+  el.innerHTML=html;
+
   $$('[data-del]').forEach(b=>b.onclick=()=>{if(b.dataset.s){delItem(b.dataset.del)}else{b.dataset.s=1;b.textContent='Confirm';b.classList.add('bad');setTimeout(()=>{if(b.isConnected){b.textContent='Remove';b.classList.remove('bad');delete b.dataset.s}},3000)}});
-  $$('[data-disp]').forEach(s=>s.onchange=()=>updItem(s.dataset.disp,{disposition:s.value}));$$('[data-direct]').forEach(b=>b.onclick=()=>updItem(b.dataset.direct,{status:'returned'}).then(()=>toast('Marked returned')))}
-AFTER.dash=()=>{$('[data-v=add]',$('#view')).onclick=()=>{S.view='add';draw()};drawItems();
-  $('#q').oninput=e=>{S.q=e.target.value;drawItems()};$$('.chip').forEach(c=>c.onclick=()=>{S.filter=c.dataset.f;$$('.chip').forEach(x=>x.classList.toggle('on',x===c));try{c.scrollIntoView({behavior:'smooth',inline:'nearest',block:'nearest'})}catch(e){}drawItems()})};
+  $$('[data-disp]').forEach(s=>s.onchange=()=>updItem(s.dataset.disp,{disposition:s.value}));
+  $$('[data-direct]').forEach(b=>b.onclick=()=>updItem(b.dataset.direct,{status:'returned'}).then(()=>toast('Marked returned')));
+  $$('[data-resolve-lost]').forEach(b=>b.onclick=()=>resolveLostReport(b.dataset.resolveLost,b.dataset.student));
+  $('#allToLostFilterBtn')&&($('#allToLostFilterBtn').onclick=()=>{
+    S.filter='lost';
+    $$('.chip').forEach(x=>x.classList.toggle('on',x.dataset.f==='lost'));
+    drawItems();
+  });
+}
+
+AFTER.dash=()=>{
+  $('[data-v=add]',$('#view')).onclick=()=>{S.view='add';draw()};
+  $$('[data-stat-act]').forEach(st=>st.onclick=()=>{
+    const act=st.dataset.statAct;
+    if(act==='matches_view'){S.view='matches';draw(true);return}
+    if(act==='claims_view'){S.view='claims';draw(true);return}
+    S.filter=act;
+    $$('.chip').forEach(x=>x.classList.toggle('on',x.dataset.f===act));
+    try{st.scrollIntoView({behavior:'smooth',inline:'nearest',block:'nearest'})}catch(e){}
+    drawItems();
+  });
+  drawItems();
+  $('#q').oninput=e=>{S.q=e.target.value;drawItems()};
+  $$('.chip').forEach(c=>c.onclick=()=>{
+    S.filter=c.dataset.f;
+    $$('.chip').forEach(x=>x.classList.toggle('on',x===c));
+    try{c.scrollIntoView({behavior:'smooth',inline:'nearest',block:'nearest'})}catch(e){}
+    drawItems();
+  });
+};
 async function updItem(id,patch){const it=S.priv.find(i=>i.id===id);await S.db.collection('itemPrivate').doc(id).update(patch);if(it&&!it.sensitive){const pub={};['status'].forEach(k=>{if(k in patch)pub[k]=patch[k]});if(Object.keys(pub).length)await S.db.collection('items').doc(id).update(pub).catch(()=>{})}}
 async function delItem(id){await S.db.collection('itemPrivate').doc(id).delete();await S.db.collection('items').doc(id).delete().catch(()=>{});toast('Item removed')}
 let sweeping=false;async function sweepExpiry(){if(sweeping||S.role!=='admin')return;const due=S.priv.filter(i=>i.status==='unclaimed'&&i.expiresAt<now());if(!due.length)return;sweeping=true;try{for(const i of due)await updItem(i.id,{status:'expired'});toast(`${due.length} item${due.length>1?'s':''} passed the holding period`)}catch(e){}sweeping=false}
@@ -1316,7 +1571,7 @@ const seenLostIds=new Set();
 let adminLostInit=false;
 function checkAdminLostReports(){
   if(S.role!=='admin')return;
-  const openReports=S.lost.filter(l=>l.kind==='lost'&&l.status==='open');
+  const openReports=S.lost.filter(l=>(l.kind==='lost'||l.desc)&&l.status!=='resolved');
   if(!adminLostInit){
     openReports.forEach(l=>seenLostIds.add(l.id));
     adminLostInit=true;
@@ -1325,7 +1580,7 @@ function checkAdminLostReports(){
   openReports.forEach(l=>{
     if(!seenLostIds.has(l.id)){
       seenLostIds.add(l.id);
-      sendNotification('New Lost Item Reported!',`${l.name||'Student'} reported lost: ${l.desc} at ${l.zone||'Campus grounds'}`,()=>{S.view='matches';draw()},'alert');
+      sendNotification('New Lost Item Reported!',`${l.name||'Student'} reported lost: ${l.desc} at ${l.zone||'Campus grounds'}`,()=>{S.view='dash';S.filter='lost';draw(true)},'alert');
     }
   });
 }
@@ -1347,17 +1602,21 @@ VIEWS.matches=()=>{
         </div></article>`;
       }).join('')).join('')}</div>`:empty('spark','No matches yet','When an item handed in to the admin office matches your lost report with 75% accuracy or higher, it appears here and notifies you automatically.'));
   }
-  const open=S.lost.filter(l=>l.status==='open'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
+  const open=S.lost.filter(l=>l.status!=='resolved'),items=S.priv.filter(i=>i.status==='unclaimed');let res=[],note='';
   try{res=findMatches(open,items)}catch(e){console.error(e);note=`<div class="warn">Could not compute matches: ${esc(e.message)}</div>`}
   return head('Matches','Suggests a found item only when it is a 75% match or higher.',cBadge)+note+
-  `<div class="sec" style="margin-top:0">Likely matches</div>${res.length?`<div class="list">${res.map(({l,c})=>{const best=c[0];return `<article class="card rise"><div class="row"><div class="ic v">${ic('spark')}</div><div class="grow"><b>${esc(l.name)} lost: ${esc(l.desc)}</b><div class="meta"><span>${esc(l.cat)}</span><span>${ic('pin')}${esc(l.zone)}</span><span>${fmtDate(l.when)}</span></div></div><span class="pill p-new">${best.p}% match</span></div>
-   <div class="cmp"><div><small>Best found item</small>${esc(best.i.desc)}</div><div><small>Stored at</small>${esc(best.i.storage||'')}${best.i.locked?' (locked)':''}</div></div><div class="hint">Why: ${esc(why(best.w))}</div>
+  `<div class="sec" style="margin-top:0">Likely matches</div>${res.length?`<div class="list">${res.map(({l,c})=>{const best=c[0];return `<article class="card rise"><div class="row"><div class="ic v">${ic('spark')}</div><div class="grow"><b>${esc(l.name||'Student')} lost: ${esc(l.desc)}</b><div class="meta"><span>${esc(l.cat)}</span><span>${ic('pin')}${esc(l.zone||'Campus')}</span><span>${fmtDate(l.when||l.ts)}</span></div></div><span class="pill p-new">${best.p}% match</span></div>
+   <div class="cmp"><div><small>Best found item</small>${esc(best.i.desc)}</div><div><small>Stored at</small>${esc(best.i.storage||'Admin office')}${best.i.locked?' (locked)':''}</div></div><div class="hint">Why: ${esc(why(best.w))}</div>
    ${c.length>1?`<div class="hint" style="margin-top:6px">Other possible: ${c.slice(1).map(x=>esc(x.i.desc)+' ('+x.p+'%)').join(' · ')}</div>`:''}
-   <div class="meta">Contact: ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).phone||'')} · ${esc((S.profiles.find(p=>p.uid===l.studentId)||{}).email||'')}</div><button class="btn sm" style="margin-top:10px" data-lost="${esc(l.id)}">Mark resolved</button></article>`}).join('')}</div>`:(note?'':'<p class="hint">No matches of 75% or higher right now.</p>')}`};
+   <div class="meta">Contact: ${esc(l.phone||(S.profiles.find(p=>p.uid===l.studentId)||{}).phone||'')} · ${esc(l.email||(S.profiles.find(p=>p.uid===l.studentId)||{}).email||'')}</div><button class="btn sm" style="margin-top:10px" data-lost="${esc(l.id)}" data-student="${esc(l.studentId||'')}">${ic('check')}Mark resolved</button></article>`}).join('')}</div>`:(note?'':'<p class="hint">No matches of 75% or higher right now.</p>')}`};
 AFTER.matches=()=>{
   $$('[data-claim]').forEach(b=>b.onclick=()=>claimModal(b.dataset.claim));
-  $$('[data-lost]').forEach(b=>b.onclick=async()=>{const l=S.lost.find(x=>x.id===b.dataset.lost);if(!l)return;b.disabled=true;
-    try{await S.db.collection('lost').doc(l.studentId).update({[l.id]:{...l,status:'resolved'}});toast('Marked resolved')}catch(e){b.disabled=false;toast('Could not update the report')}})};
+  $$('[data-lost]').forEach(b=>b.onclick=async()=>{
+    const l=S.lost.find(x=>x.id===b.dataset.lost);if(!l)return;
+    b.disabled=true;
+    await resolveLostReport(l.id,l.studentId);
+  });
+};
 
 VIEWS.reports=()=>{const it=S.priv,by=k=>Object.entries(it.reduce((m,i)=>(m[i[k]]=(m[i[k]]||0)+1,m),{})).sort((a,b)=>b[1]-a[1]),cats=by('cat'),locs=by('loc'),mx=Math.max(1,...cats.map(x=>x[1]),...locs.map(x=>x[1]));
   const wk=it.filter(i=>now()-i.foundAt<7*DAY);const bars=a=>a.length?a.map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><div><i style="--w:${v/mx*100}%"></i></div><span>${v}</span></div>`).join(''):'<p class="hint">No data yet.</p>';
