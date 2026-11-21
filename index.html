@@ -685,7 +685,7 @@ function extractLostReports(docs){
 function sub(path,key,map){const ref=S.db.collection(path);const q=(S.role!=='admin'&&path==='claims'&&ref.where)?ref.where('studentId','==',S.me.id):ref;UNSUBS.push(q.onSnapshot(s=>{S[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(map)map();changed()},()=>{S[key]=[];changed()}))}
 function startApp(){
   if(!subsStarted){subsStarted=true;
-    sub('items','items',()=>{if(S.role==='student')checkStudentMatches()});sub('claims','claims');sub('returns','returns');
+    sub('items','items',()=>{if(S.role==='student')checkStudentMatches()});sub('claims','claims',()=>{if(S.role==='student')checkClaimLockouts()});sub('returns','returns');
     UNSUBS.push(S.db.doc('settings/main').onSnapshot(d=>{if(d.exists)S.settings={...S.settings,...d.data()};changed()},()=>{}));
     if(S.role==='admin'){
       sub('itemPrivate','priv',sweepExpiry);
@@ -849,6 +849,7 @@ async function doSignOut(){
   studentMatchInit=false;
   seenLostIds.clear();
   adminLostInit=false;
+  seenClaimLockouts.clear();
   Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],allowlist:[],adminUsers:[]});
   S.role=null;S.isManager=false;S.me=null;S.profile=null;S.pick=null;
   if(S.auth)await S.auth.signOut().catch(()=>{});
@@ -904,10 +905,35 @@ function claimModal(id){const it=S.items.find(i=>i.id===id);if(!it)return;
         await putMap('claimAnswers',S.me.id,cid,{a1:$('#a1',s).value,a2:$('#a2',s)?.value||''});
         close();confetti();toast('Claim sent. Track it under My claims.')}catch(err){console.error(err);toast('Could not send your claim. Please try again.')}}});}
 
-VIEWS.myclaims=()=>{const mine=S.claims.filter(c=>c.studentId===S.me.id).sort((a,b)=>b.ts-a.ts);
-  return head('My claims','Follow each claim without visiting the office.')+(mine.length?`<div class="list">${mine.map((c,n)=>{const idx=STEPS.findIndex(s=>s[0]===c.status);
-   return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>Requested ${fmtDate(c.ts)}</span></div></div>${c.status==='rejected'?'<span class="pill p-expired">Not approved</span>':c.status==='collected'?'<span class="pill p-returned">Collected</span>':''}</div>
-   ${c.status==='rejected'?'<p class="hint" style="margin-top:12px">The verification answers did not match. Visit the admin office with your college ID to discuss.</p>':`<div class="tl">${STEPS.map((s,k)=>`<div class="s ${k<=idx?'done':''} ${k===idx&&idx<3?'now':''}"><i>${k<=idx?ic('check'):''}</i>${s[1]}</div>`).join('')}</div>${c.status==='ready'?`<div class="banner" style="margin:16px 0 0">${ic('id')}Ready for pickup. Bring your college ID card to the admin office.</div>`:''}`}</article>`}).join('')}</div>`:empty('clock','No claims yet','Find your item under Browse found and tap "This is mine".'))};
+VIEWS.myclaims=()=>{
+  const mine=S.claims.filter(c=>c.studentId===S.me.id).sort((a,b)=>b.ts-a.ts);
+  mine.forEach(c=>{
+    if((c.status==='ready'||c.status==='approved')&&!c.handoverCode){
+      const code=String(Math.floor(100000+Math.random()*900000));
+      c.handoverCode=code;c.failedAttempts=0;c.lockedUntil=0;c.codeCreatedAt=now();
+      S.db.collection('claims').doc(c.id).update({handoverCode:code,failedAttempts:0,lockedUntil:0,codeCreatedAt:now()}).catch(()=>{});
+    }
+  });
+  return head('My claims','Follow each claim without visiting the office.')+(mine.length?`<div class="list">${mine.map((c,n)=>{
+    const idx=STEPS.findIndex(s=>s[0]===c.status);
+    const isLocked=c.lockedUntil && now()<c.lockedUntil;
+    const lockMins=isLocked?Math.max(1,Math.ceil((c.lockedUntil-now())/60000)):0;
+    const rawCode=c.handoverCode||'';
+    const formattedCode=rawCode?(rawCode.slice(0,3)+' '+rawCode.slice(3)):'------';
+
+    return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>Requested ${fmtDate(c.ts)}</span></div></div>${c.status==='rejected'?'<span class="pill p-expired">Not approved</span>':c.status==='collected'?'<span class="pill p-returned">Collected</span>':isLocked?`<span class="pill p-expired">${ic('lock')} Locked (${lockMins}m)</span>`:''}</div>
+    ${c.status==='rejected'
+      ?'<p class="hint" style="margin-top:12px">The verification answers did not match. Visit the admin office with your college ID to discuss.</p>'
+      :`<div class="tl">${STEPS.map((s,k)=>`<div class="s ${k<=idx?'done':''} ${k===idx&&idx<3?'now':''}"><i>${k<=idx?ic('check'):''}</i>${s[1]}</div>`).join('')}</div>${c.status==='ready'?`
+        ${isLocked?`<div class="banner rise" style="margin:16px 0 0;background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">${ic('lock')}<b>Security Alert:</b> 3 incorrect handover codes were entered for this item. This claim is locked for <b>${lockMins} more minute${lockMins>1?'s':''}</b> (until ${new Date(c.lockedUntil).toLocaleTimeString('en-IN',{timeStyle:'short'})}) to protect your property. Please ensure only you present this code to staff.</div>`:''}
+        <div class="card rise" style="margin:14px 0 0;background:var(--surface2);border:2px dashed var(--brand);padding:18px;text-align:center;border-radius:18px">
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--brand);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px">${ic('shield')} Secure Handover Verification Code</div>
+          <div style="font-size:32px;font-weight:900;letter-spacing:6px;color:var(--fg);margin:10px 0;font-family:monospace;user-select:all;cursor:pointer" title="Tap to copy code" onclick="navigator.clipboard.writeText('${esc(rawCode)}').then(()=>toast('Code copied!')).catch(()=>{})">${esc(formattedCode)}</div>
+          <p class="hint" style="margin:0;font-size:12.5px;line-height:1.45">Show or read this 6-digit code to the admin staff when collecting your item. You can sign in from any phone or computer to retrieve this code.</p>
+        </div>
+        <div class="banner" style="margin:12px 0 0">${ic('id')}Ready for pickup. Bring your college ID card and this code to the admin office.</div>`:''}`
+    }</article>`
+  }).join('')}</div>`:empty('clock','No claims yet','Find your item under Browse found and tap "This is mine".'))};
 
 function reportForm(kind){const found=kind==='found';
   return head(found?'Report a found item':'Report a lost item',found?'Hand the item to the admin office, then describe it here. Text only, no photos.':'Tell us what you lost. We compare it with every item handed in.')+
@@ -1210,23 +1236,132 @@ AFTER.add=()=>{const sync=()=>{const c=$('#ac').value,v=VALUABLES.includes(c),s=
 
 VIEWS.claims=()=>{const l=S.claims.slice().sort((a,b)=>b.ts-a.ts);
   return head('Claims','Check answers, then move each claim along.')+(l.length?`<div class="list">${l.map(c=>{const a=(S.answers.find(x=>x.id===c.studentId)||{})[c.id]||{},it=S.priv.find(i=>i.id===c.itemId)||{};const m1=a.a1&&it.a1&&a.a1.trim().toLowerCase()===it.a1.trim().toLowerCase();
+   const isLocked=c.lockedUntil && now()<c.lockedUntil;
+   const lockMins=isLocked?Math.max(1,Math.ceil((c.lockedUntil-now())/60000)):0;
    const nxt={requested:['approved','Approve'],approved:['ready','Mark ready for pickup'],ready:['collected','Record handover']}[c.status];
-   return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>${ic('user')}${esc(who(c).name)} · ${esc(who(c).roll)}</span><span>${fmtDate(c.ts)}</span><span>${ic('box')}${esc(it.storage||'')}</span></div></div><span class="pill ${c.status==='collected'?'p-returned':c.status==='rejected'?'p-expired':'p-claimed'}">${c.status}</span></div>
+   return `<article class="card rise"><div class="row"><div class="ic">${ic(catIcon(c.cat))}</div><div class="grow"><b>${esc(c.itemDesc)}</b><div class="meta"><span>${ic('user')}${esc(who(c).name)} · ${esc(who(c).roll)}</span><span>${fmtDate(c.ts)}</span><span>${ic('box')}${esc(it.storage||'')}</span></div></div><div class="row" style="gap:6px">${isLocked?`<span class="pill p-expired" style="display:inline-flex;align-items:center;gap:4px">${ic('lock')} Locked (${lockMins}m)</span>`:''}<span class="pill ${c.status==='collected'?'p-returned':c.status==='rejected'?'p-expired':c.status==='ready'?'p-new':'p-claimed'}">${c.status==='ready'?'ready (code active)':c.status}</span></div></div>
    ${c.status==='requested'?`<div class="cmp"><div><small>${esc(it.q1||'Question 1')}</small>Student: <b>${esc(a.a1||'')}</b></div><div><small>Recorded answer</small><b class="${m1?'ok':'no'}">${esc(it.a1||'none')}</b> ${m1?'(matches)':'(differs)'}</div>${it.q2?`<div><small>${esc(it.q2)}</small>Student: <b>${esc(a.a2||'')}</b></div><div><small>Recorded answer</small><b>${esc(it.a2||'none')}</b></div>`:''}</div>`:''}
-   <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${nxt?`<button class="btn sm" data-act="${c.id}" data-to="${nxt[0]}">${nxt[1]}</button>`:''}${c.status==='requested'?`<button class="btn ghost sm" data-act="${c.id}" data-to="rejected">Reject</button>`:''}</div></article>`}).join('')}</div>`:empty('check','No claims yet','Claims appear here when students tap "This is mine".'))};
+   <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${nxt?`<button class="btn sm" data-act="${c.id}" data-to="${nxt[0]}">${isLocked?'Locked - View':nxt[1]}</button>`:''}${c.status==='requested'?`<button class="btn ghost sm" data-act="${c.id}" data-to="rejected">Reject</button>`:''}</div></article>`}).join('')}</div>`:empty('check','No claims yet','Claims appear here when students tap "This is mine".'))};
 AFTER.claims=()=>$$('[data-act]').forEach(b=>b.onclick=()=>{const c=S.claims.find(x=>x.id===b.dataset.act),to=b.dataset.to;if(to==='collected')return handoverModal(c);setClaim(c,to)});
-async function setClaim(c,to){await S.db.collection('claims').doc(c.id).update({status:to});
-  if(to==='approved'||to==='ready')await updItem(c.itemId,{status:'claimed'});if(to==='rejected'&&!S.claims.some(x=>x.itemId===c.itemId&&x.id!==c.id&&['approved','ready'].includes(x.status)))await updItem(c.itemId,{status:'unclaimed'});toast('Claim '+to)}
+async function setClaim(c,to){
+  const updates={status:to};
+  if((to==='approved'||to==='ready')&&!c.handoverCode){
+    updates.handoverCode=String(Math.floor(100000+Math.random()*900000));
+    updates.failedAttempts=0;
+    updates.lockedUntil=0;
+    updates.codeCreatedAt=now();
+  }
+  await S.db.collection('claims').doc(c.id).update(updates);
+  if(to==='approved'||to==='ready')await updItem(c.itemId,{status:'claimed'});
+  if(to==='rejected'&&!S.claims.some(x=>x.itemId===c.itemId&&x.id!==c.id&&['approved','ready'].includes(x.status)))await updItem(c.itemId,{status:'unclaimed'});
+  toast('Claim '+to);
+}
 const returnFor=c=>{const it=S.priv.find(i=>i.id===c.itemId);if(!it||!it.finderUid||it.returnLogged||it.pointsAwarded||it.finderUid===c.studentId)return null;return{uid:it.finderUid,name:(S.profiles.find(p=>p.uid===it.finderUid)||{}).name||it.finder,it}};
 async function logReturn(c){const r=returnFor(c);if(!r)return;const ref=S.db.collection('returns').doc(r.uid),d=await ref.get(),o=d.exists?d.data():{count:0};
   await ref.set({...o,uid:r.uid,name:r.name,count:(o.count||0)+1,['log_'+r.it.id]:{desc:r.it.desc,at:now()}});await updItem(r.it.id,{returnLogged:true})}
-function handoverModal(c){const p=S.profiles.find(x=>x.uid===c.studentId)||{},rw=returnFor(c);
-  modal(`<h3>Record handover</h3><p class="hint">This entry is permanent and cannot be edited.</p><form id="hf" class="list" style="gap:12px;margin-top:12px"><div class="cmp"><div><small>Student</small>${esc(p.name||'')}</div><div><small>Roll number</small>${esc(p.roll||'')}</div></div>
-   ${rw?`<div class="banner" style="margin:0">${ic('spark')}${esc(rw.name)} found this item. The return will be added to their history.</div>`:''}<label class="f">Released by<input class="in" id="hs" value="${esc(S.adminName)}" required></label><label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="hid" required> College ID card checked against the student</label><button class="btn">Confirm handover</button></form>`,(s,close)=>{
-   $('#hf',s).onsubmit=async e=>{e.preventDefault();const id=S.db.collection('handovers').doc().id;
-    await S.db.collection('handovers').doc(id).set({id,claimId:c.id,itemId:c.itemId,itemDesc:c.itemDesc,roll:p.roll||'',studentName:p.name||'',by:$('#hs',s).value,idChecked:true,at:now()});
-    await S.db.collection('claims').doc(c.id).update({status:'collected'});await updItem(c.itemId,{status:'returned'});try{await logReturn(c)}catch(e){console.error(e)}close();confetti();toast(rw?'Handover recorded. Added to the finder\'s history.':'Handover recorded')}})}
-VIEWS.handover=()=>{const l=S.handovers.slice().sort((a,b)=>b.at-a.at);return head('Handover log','Permanent record of every release.')+(l.length?`<div class="card rise scroll"><table><thead><tr><th>Date</th><th>Roll no.</th><th>Student</th><th>Item</th><th>Released by</th><th>ID</th></tr></thead><tbody>${l.map(h=>`<tr><td>${new Date(h.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td>${esc(h.roll)}</td><td>${esc(h.studentName)}</td><td>${esc(h.itemDesc)}</td><td>${esc(h.by)}</td><td class="ok">${ic('check')}</td></tr>`).join('')}</tbody></table></div>`:empty('log','No handovers yet','Records appear here when you finish a claim.'))};
+function handoverModal(c){
+  const curClaim=S.claims.find(x=>x.id===c.id)||c;
+  if((curClaim.status==='ready'||curClaim.status==='approved')&&!curClaim.handoverCode){
+    const code=String(Math.floor(100000+Math.random()*900000));
+    curClaim.handoverCode=code;curClaim.failedAttempts=0;curClaim.lockedUntil=0;curClaim.codeCreatedAt=now();
+    S.db.collection('claims').doc(curClaim.id).update({handoverCode:code,failedAttempts:0,lockedUntil:0,codeCreatedAt:now()}).catch(()=>{});
+  }
+
+  const p=S.profiles.find(x=>x.uid===curClaim.studentId)||{},rw=returnFor(curClaim);
+  const isLocked=curClaim.lockedUntil && now()<curClaim.lockedUntil;
+  const lockMins=isLocked?Math.max(1,Math.ceil((curClaim.lockedUntil-now())/60000)):0;
+
+  modal(`<h3>Record handover</h3><p class="hint">Verify student identity &amp; 6-digit handover code before releasing the item.</p>
+    <form id="hf" class="list" style="gap:12px;margin-top:12px">
+      <div class="cmp"><div><small>Student</small>${esc(p.name||'')}</div><div><small>Roll number</small>${esc(p.roll||'')}</div></div>
+      ${rw?`<div class="banner" style="margin:0">${ic('spark')}${esc(rw.name)} found this item. The return will be added to their history.</div>`:''}
+      
+      ${isLocked?`<div class="banner" style="margin:0;background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">
+        ${ic('lock')}<b>Claim is Locked:</b> 3 failed OTP attempts were entered. Handover blocked for <b>${lockMins} more minute${lockMins>1?'s':''}</b> (until ${new Date(curClaim.lockedUntil).toLocaleTimeString('en-IN',{timeStyle:'short'})}). The student has been alerted.
+        ${S.isManager?`<div style="margin-top:8px"><button type="button" class="btn sm bad" id="mgrUnlockBtn">${ic('shield')}Reset lockout (Manager override)</button></div>`:''}
+      </div>`:''}
+
+      <label class="f">Released by<input class="in" id="hs" value="${esc(S.adminName)}" required></label>
+      
+      <label class="f">Student 6-digit Handover Code
+        <input class="in" id="hotp" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="e.g. 582914" autocomplete="off" required ${isLocked?'disabled':''} style="font-size:22px;font-weight:800;letter-spacing:6px;font-family:monospace;text-align:center">
+      </label>
+      <div class="hint" style="margin-top:-6px;font-size:12px">
+        ${curClaim.failedAttempts?`<span style="color:var(--bad);font-weight:600">Failed attempts: ${curClaim.failedAttempts}/3.</span> `:''}Ask the student for the 6-digit code displayed in their "My claims" dashboard.
+      </div>
+      <div class="msg-bad" id="herr" style="font-size:13px;font-weight:600"></div>
+
+      <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="hid" required ${isLocked?'disabled':''}> College ID card checked against the student</label>
+      <button class="btn" id="cfmHandoverBtn" ${isLocked?'disabled':''}>Confirm handover</button>
+    </form>`,(s,close)=>{
+      if(isLocked&&S.isManager){
+        const ub=$('#mgrUnlockBtn',s);
+        if(ub){
+          ub.onclick=async()=>{
+            ub.disabled=true;
+            ub.textContent='Resetting...';
+            await S.db.collection('claims').doc(curClaim.id).update({failedAttempts:0,lockedUntil:0});
+            curClaim.failedAttempts=0;
+            curClaim.lockedUntil=0;
+            toast('Lockout reset by manager');
+            close();
+            handoverModal(curClaim);
+          };
+        }
+      }
+
+      $('#hf',s).onsubmit=async e=>{
+        e.preventDefault();
+        const fresh=S.claims.find(x=>x.id===curClaim.id)||curClaim;
+        if(fresh.lockedUntil && now()<fresh.lockedUntil){
+          const m=Math.max(1,Math.ceil((fresh.lockedUntil-now())/60000));
+          $('#herr',s).textContent=`Claim is locked for ${m} more minute(s) due to 3 failed attempts.`;
+          return;
+        }
+
+        const inputCode=($('#hotp',s)?.value||'').replace(/\s+/g,'').trim();
+        if(!/^\d{6}$/.test(inputCode)){
+          $('#herr',s).textContent='Please enter a valid 6-digit numeric code.';
+          return;
+        }
+
+        const expectedCode=String(fresh.handoverCode||'').trim();
+        if(!expectedCode || inputCode!==expectedCode){
+          const fails=(fresh.failedAttempts||0)+1;
+          if(fails>=3){
+            const lockTime=now()+15*60*1000;
+            await S.db.collection('claims').doc(fresh.id).update({failedAttempts:fails,lockedUntil:lockTime});
+            fresh.failedAttempts=fails;
+            fresh.lockedUntil=lockTime;
+            sendNotification('⚠️ Security Alert: Handover Locked',`3 incorrect handover codes were entered for "${fresh.itemDesc}". This claim is locked for 15 minutes to protect your property.`,()=>{S.view='myclaims';draw(true)},'alert');
+            $('#herr',s).textContent='Incorrect code! 3/3 attempts failed. Claim is now LOCKED for 15 minutes. The student has been alerted.';
+            $('#hotp',s)&&($('#hotp',s).disabled=true);
+            $('#cfmHandoverBtn',s)&&($('#cfmHandoverBtn',s).disabled=true);
+          }else{
+            await S.db.collection('claims').doc(fresh.id).update({failedAttempts:fails});
+            fresh.failedAttempts=fails;
+            $('#herr',s).textContent=`Incorrect handover code! Attempt ${fails} of 3. (Locks for 15 mins after 3 failed attempts).`;
+          }
+          return;
+        }
+
+        // Code matches!
+        const btn=$('#cfmHandoverBtn',s);
+        if(btn){btn.disabled=true;btn.textContent='Verifying & saving...';}
+        const id=S.db.collection('handovers').doc().id;
+        await S.db.collection('handovers').doc(id).set({id,claimId:fresh.id,itemId:fresh.itemId,itemDesc:fresh.itemDesc,roll:p.roll||'',studentName:p.name||'',by:$('#hs',s).value,idChecked:true,codeVerified:true,at:now()});
+        
+        // Burn the code permanently
+        await S.db.collection('claims').doc(fresh.id).update({status:'collected',handoverCode:null,codeBurnedAt:now(),failedAttempts:0,lockedUntil:0});
+        await updItem(fresh.itemId,{status:'returned'});
+        try{await logReturn(fresh)}catch(e){console.error(e)}
+        close();
+        confetti();
+        toast(rw?'Handover verified & recorded. Added to the finder\'s history.':'Handover verified & recorded. Code burned.');
+      };
+  });
+}
+VIEWS.handover=()=>{const l=S.handovers.slice().sort((a,b)=>b.at-a.at);return head('Handover log','Permanent record of every release.')+(l.length?`<div class="card rise scroll"><table><thead><tr><th>Date</th><th>Roll no.</th><th>Student</th><th>Item</th><th>Released by</th><th>Security</th></tr></thead><tbody>${l.map(h=>`<tr><td>${new Date(h.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td>${esc(h.roll)}</td><td>${esc(h.studentName)}</td><td>${esc(h.itemDesc)}</td><td>${esc(h.by)}</td><td><span class="pill p-returned" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px">${ic('shield')} OTP verified</span></td></tr>`).join('')}</tbody></table></div>`:empty('log','No handovers yet','Records appear here when you finish a claim.'))};
 
 VIEWS.students=()=>head('Students',S.isManager?'Search, update student details, or manage registrations.':'Search by roll number or name. Only admins can see these details.')+`<input class="in rise" id="sq" placeholder="Search by name, roll, phone, email, dept..." style="max-width:420px;margin-bottom:14px"><div id="slist" class="list" style="padding-bottom:56px"></div>`;
 function drawStudents(){
@@ -1632,6 +1767,24 @@ function checkAdminLostReports(){
     if(!seenLostIds.has(l.id)){
       seenLostIds.add(l.id);
       sendNotification('New Lost Item Reported!',`${l.name||'Student'} reported lost: ${l.desc} at ${l.zone||'Campus grounds'}`,()=>{S.view='dash';S.filter='lost';draw(true)},'alert');
+    }
+  });
+}
+
+const seenClaimLockouts=new Set();
+function checkClaimLockouts(){
+  if(S.role!=='student'||!S.me)return;
+  const myClaims=S.claims.filter(c=>c.studentId===S.me.id);
+  myClaims.forEach(c=>{
+    if(c.lockedUntil && c.lockedUntil>now() && !seenClaimLockouts.has(c.id+'_'+c.lockedUntil)){
+      seenClaimLockouts.add(c.id+'_'+c.lockedUntil);
+      const mins=Math.max(1,Math.ceil((c.lockedUntil-now())/60000));
+      sendNotification(
+        '⚠️ Security Alert: Handover Locked',
+        `3 incorrect handover codes were entered for "${c.itemDesc}". This claim is locked for ${mins} minutes to protect your property.`,
+        ()=>{S.view='myclaims';draw(true);},
+        'alert'
+      );
     }
   });
 }
