@@ -247,8 +247,15 @@ class MainActivity : AppCompatActivity() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Exit App")
+                        .setMessage("Are you sure you want to exit College Lost & Found?")
+                        .setPositiveButton("Exit") { _, _ ->
+                            isEnabled = false
+                            onBackPressedDispatcher.onBackPressed()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
                 }
             }
         })

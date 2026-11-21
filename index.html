@@ -741,7 +741,7 @@ function draw(switchOnly=false){
       S.pick=null;
       draw(true);
     });
-    $('#share').onclick=shareModal;$('#out').onclick=async()=>{UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});subsStarted=false;seenMatchPairIds.clear();studentMatchInit=false;seenLostIds.clear();adminLostInit=false;Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],allowlist:[],adminUsers:[]});S.role=null;S.isManager=false;S.me=null;S.profile=null;S.pick=null;if(S.auth)await S.auth.signOut().catch(()=>{});renderLogin(1)};
+    $('#share').onclick=shareModal;$('#out').onclick=confirmSignOutModal;
   } else {
     $$('.nv[data-v]').forEach(b=>{
       const on=b.dataset.v===S.view;
@@ -803,6 +803,57 @@ function shareModal(){
     $('#qcopy',s).onclick=async()=>{const v=$('#qu',s).value;try{await navigator.clipboard.writeText(v);toast('Link copied')}catch(e){$('#qu',s).select();toast('Select and copy the link')}};
     $('#qdl',s).onclick=async()=>{const c=$('#qr canvas',s);if(!c)return toast('Add the link first');const b=await new Promise(r=>c.toBlob(r));
       try{await saveFile('lost-and-found-qr.png',b);toast('QR saved')}catch(e){toast('Saving was cancelled or is unavailable here')}}});
+}
+
+function confirmSignOutModal(){
+  const isMobile=window.innerWidth<=860;
+  const userRole=(S.role==='admin')?(S.isManager?'Manager':'Staff Admin'):'Student';
+  const userName=S.profile?.name||S.me?.name||S.me?.email||'User';
+  modal(`
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+      <div style="width:46px;height:46px;border-radius:14px;background:var(--bad-soft);color:var(--bad);display:grid;place-items:center;flex-shrink:0">
+        ${ic('out')}
+      </div>
+      <div style="min-width:0;flex:1">
+        <h3 style="margin:0;font-size:20px;font-weight:700">${isMobile?'Confirm Exit':'Confirm Log Out'}</h3>
+        <p class="hint" style="margin:2px 0 0;font-size:12px">${esc(userName)} &bull; ${esc(userRole)}</p>
+      </div>
+    </div>
+    <p style="margin:14px 0 20px;color:var(--muted);font-size:14px;line-height:1.55">
+      Are you sure you want to ${isMobile?'exit and log out':'log out of your account'}? You will be returned to the sign-in page, and you will need to sign in again to access the portal.
+    </p>
+    <div class="row" style="margin-top:18px;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn ghost" id="cxlSignOut" style="min-width:85px">Cancel</button>
+      <button class="btn bad" id="cfmSignOut" style="min-width:130px">${ic('out')}${isMobile?'Exit &amp; Log Out':'Confirm Log Out'}</button>
+    </div>`,
+    (s,close)=>{
+      const cxl=$('#cxlSignOut',s);
+      const cfm=$('#cfmSignOut',s);
+      if(cxl)cxl.onclick=close;
+      if(cfm){
+        cfm.onclick=async()=>{
+          cfm.disabled=true;
+          cfm.textContent='Signing out...';
+          close();
+          await doSignOut();
+        };
+      }
+    }
+  );
+}
+
+async function doSignOut(){
+  UNSUBS.splice(0).forEach(f=>{try{f&&f()}catch(e){}});
+  subsStarted=false;
+  seenMatchPairIds.clear();
+  studentMatchInit=false;
+  seenLostIds.clear();
+  adminLostInit=false;
+  Object.assign(S,{items:[],priv:[],claims:[],answers:[],lost:[],found:[],profiles:[],handovers:[],reports:[],allowlist:[],adminUsers:[]});
+  S.role=null;S.isManager=false;S.me=null;S.profile=null;S.pick=null;
+  if(S.auth)await S.auth.signOut().catch(()=>{});
+  toast('Signed out successfully');
+  renderLogin();
 }
 
 /* ================= STUDENT VIEWS ================= */
