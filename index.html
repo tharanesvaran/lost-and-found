@@ -262,6 +262,12 @@ td{padding:10px 8px;border-top:1px solid var(--line)}
 .landing-footer-card{background:var(--surface2);border:1px solid var(--line);border-radius:22px;padding:28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px}
 .landing-footer-card h3{font-size:20px;margin:0 0 6px}
 .landing-footer-card p{color:var(--muted);margin:0;font-size:14px}
+.switch{position:relative;display:inline-block;width:52px;height:28px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:var(--line);border-radius:28px;transition:.25s ease}
+.slider:before{position:absolute;content:"";height:20px;width:20px;left:4px;bottom:4px;background:#fff;border-radius:50%;transition:.25s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.switch input:checked + .slider{background:var(--brand)}
+.switch input:checked + .slider:before{transform:translateX(24px)}
 </style>
 </head><body>
 
@@ -360,7 +366,28 @@ function requestNotificationPermission(){
 }
 ['click','touchstart'].forEach(e=>document.addEventListener(e,requestNotificationPermission,{once:true}));
 
+function isNotifEnabled(){
+  try{
+    const v=localStorage.getItem('lf_notifs_enabled');
+    if(v!==null)return v==='true';
+  }catch(e){}
+  if(S.profile&&S.profile.notifsEnabled!==undefined)return !!S.profile.notifsEnabled;
+  return true;
+}
+
+async function setNotifEnabled(val){
+  try{localStorage.setItem('lf_notifs_enabled',String(val))}catch(e){}
+  if(S.profile)S.profile.notifsEnabled=val;
+  if(S.me){
+    try{
+      await S.db.collection('profiles').doc(S.me.id).update({notifsEnabled:val}).catch(()=>{});
+      await S.db.doc('data/users/'+S.me.id+'/profile').update({notifsEnabled:val}).catch(()=>{});
+    }catch(e){}
+  }
+}
+
 function sendNotification(title,body,onClick,type='match'){
+  if(!isNotifEnabled())return;
   playChime(type);
   showAppBanner(title,body,onClick);
   if(window.AndroidNative&&window.AndroidNative.postNotification){
@@ -968,16 +995,73 @@ function historyCard(){const me=S.me.id,rt=S.returns.find(x=>x.id===me)||{count:
   return `<div class="sec">Your history</div><div class="stats" style="max-width:640px">${[['Found items returned to owners',ret.length,'var(--good)'],['Lost reports filed',lost.length,'var(--hot)'],['Own items got back',got.length,'var(--info)']].map(([l,n,c],k)=>`<div class="stat rise" style="--c:${c};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
   <div class="card rise" style="max-width:640px">${all.length?all.map(h=>`<div class="lb"><span class="grow">${esc(h.desc)}<div class="hint">${fmtDate(h.at)}${h.zone?' · '+esc(h.zone):''}</div></span><span class="pill ${L[h.t][1]}">${L[h.t][0]}</span></div>`).join(''):'<p class="hint" style="margin:0">Nothing yet. Items you hand in that reach their owner, and lost reports you file, will appear here.</p>'}</div>`}
 VIEWS.profile=()=>{const p=S.profile||{};const rep=[...S.reports].sort((a,b)=>b.ts-a.ts);
+  const notifOn=isNotifEnabled();
   return head('Your profile','Only you and the admin office can see this.',`<button class="btn sm" id="editProfileTopBtn">${ic('user')}Edit profile</button>`)+
    `<div class="card rise" style="max-width:640px"><div class="row"><div class="av" style="width:56px;height:56px;font-size:22px">${esc((p.name||'?')[0])}</div>
     <div class="grow"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><div><b style="font-size:18px">${esc(p.name)}</b><div class="hint">${esc(p.roll)} · ${esc(p.dept)} · ${esc(p.year)}</div></div><button class="btn ghost sm" id="editProfileBtn">Edit details</button></div></div></div>
    <div class="meta" style="margin-top:12px"><span>${esc(p.email)}</span><span>${esc(p.phone)}</span></div>
    <div class="hint" style="margin-top:12px;font-size:12.5px;display:flex;align-items:center;gap:6px">${ic('lock')}<span>Name and roll number can only be changed by the manager. You can update your contact number, Gmail, and year of study anytime.</span></div></div>
+   
+   <div class="card rise" style="max-width:640px;margin-top:14px">
+     <div class="row" style="justify-content:space-between;align-items:center;gap:14px">
+       <div style="display:flex;align-items:center;gap:12px;min-width:0">
+         <div class="ic v" style="width:44px;height:44px;border-radius:14px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;flex-shrink:0">
+           ${ic('bell')}
+         </div>
+         <div style="min-width:0">
+           <b style="font-size:16px;color:var(--fg);display:block">Device Notifications &amp; Alerts</b>
+           <div class="hint" style="font-size:12.5px;line-height:1.4">Push alerts, match notifications, audio chimes &amp; pickup status</div>
+         </div>
+       </div>
+       <label class="switch" title="Toggle notifications on or off">
+         <input type="checkbox" id="profileNotifToggle" ${notifOn?'checked':''}>
+         <span class="slider"></span>
+       </label>
+     </div>
+     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+       <span class="hint" id="profileNotifStatus" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px">
+         ${notifOn?'<span style="color:var(--good)">● Alerts Active (Push, in-app &amp; audio)</span>':'<span style="color:var(--muted)">○ Alerts Muted</span>'}
+       </span>
+       <button class="btn ghost sm" id="profileTestNotifBtn" style="font-size:12px;padding:5px 12px">${ic('bell')}Send test notification</button>
+     </div>
+   </div>
+   
    ${historyCard()}`};
 AFTER.profile=()=>{
   const openEdit=()=>editStudentModal(S.profile,true);
   $('#editProfileTopBtn')&&($('#editProfileTopBtn').onclick=openEdit);
   $('#editProfileBtn')&&($('#editProfileBtn').onclick=openEdit);
+
+  const toggle=$('#profileNotifToggle');
+  const statusEl=$('#profileNotifStatus');
+  const testBtn=$('#profileTestNotifBtn');
+
+  if(toggle){
+    toggle.onchange=async()=>{
+      const enabled=toggle.checked;
+      await setNotifEnabled(enabled);
+      if(enabled && 'Notification' in window && Notification.permission==='default'){
+        try{await Notification.requestPermission()}catch(e){}
+      }
+      if(statusEl){
+        statusEl.innerHTML=enabled
+          ?'<span style="color:var(--good)">● Alerts Active (Push, in-app &amp; audio)</span>'
+          :'<span style="color:var(--muted)">○ Alerts Muted</span>';
+      }
+      toast(enabled?'Notifications turned ON':'Notifications turned OFF');
+    };
+  }
+
+  if(testBtn){
+    testBtn.onclick=()=>{
+      if(!isNotifEnabled()){
+        toast('Notifications are currently turned off. Turn the switch ON to receive alerts.');
+      }else{
+        sendNotification('🔔 Test Notification','Notifications are active and working on your device!',null,'match');
+        toast('Test alert sent!');
+      }
+    };
+  }
 };
 
 /* ================= ADMIN VIEWS ================= */
@@ -1831,9 +1915,68 @@ AFTER.reports=()=>{$('#cdg').onclick=async()=>{try{await navigator.clipboard.wri
   $('#csv').onclick=async()=>{const rows=[['category','description','location','date','status','storage','finder'],...S.priv.map(i=>[i.cat,i.desc,i.loc,i.date,i.status,i.storage,i.finder])];const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
    try{await saveFile('lost-found-report.csv',csv);toast('Report saved')}catch(e){toast('Saving was cancelled or is unavailable here')}}};
 
-VIEWS.settings=()=>head('Settings','Holding period and housekeeping.')+`<div class="card rise" style="max-width:560px"><label class="f">Holding period: <b id="hv" style="color:var(--brand);font-size:18px">${S.settings.holdDays} days</b><input type="range" id="hd" min="30" max="60" value="${S.settings.holdDays}" style="width:100%;accent-color:var(--brand)"></label><p class="hint" style="margin-top:10px">Applies to items logged from now on. Items still unclaimed after this period are marked Expired, and you choose to donate, dispose or send them to the welfare fund.</p><button class="btn" id="sv" style="margin-top:12px">Save</button></div>
-<div class="card rise" style="max-width:560px;margin-top:16px"><h3 style="font-size:18px">Staff &amp; Admin Roles</h3><p class="hint" style="margin:6px 0 12px"><b>Primary Manager:</b> tharanesvaran07@gmail.com (Full Manager privileges).<br>${S.isManager?`As a <b>Manager</b>, you can add new staff, change roles between Admin and Manager, or remove staff directly in the app from the <b>Admins</b> tab.`:`Your current role is <b>Admin</b>. Contact the Manager to update staff roles.`}</p>${S.isManager?`<button class="btn sm" onclick="S.view='admins';draw()">${ic('shield')}Manage staff in Admins tab</button>`:''}</div>`;
-AFTER.settings=()=>{$('#hd').oninput=e=>$('#hv').textContent=e.target.value+' days';$('#sv').onclick=async()=>{await S.db.doc('settings/main').set({holdDays:+$('#hd').value});toast('Settings saved')}};
+VIEWS.settings=()=>{
+  const notifOn=isNotifEnabled();
+  return head('Settings','Holding period, notifications and housekeeping.')+`<div class="card rise" style="max-width:560px"><label class="f">Holding period: <b id="hv" style="color:var(--brand);font-size:18px">${S.settings.holdDays} days</b><input type="range" id="hd" min="30" max="60" value="${S.settings.holdDays}" style="width:100%;accent-color:var(--brand)"></label><p class="hint" style="margin-top:10px">Applies to items logged from now on. Items still unclaimed after this period are marked Expired, and you choose to donate, dispose or send them to the welfare fund.</p><button class="btn" id="sv" style="margin-top:12px">Save</button></div>
+
+<div class="card rise" style="max-width:560px;margin-top:16px">
+  <div class="row" style="justify-content:space-between;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div class="ic v" style="width:44px;height:44px;border-radius:14px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;flex-shrink:0">
+        ${ic('bell')}
+      </div>
+      <div style="min-width:0">
+        <b style="font-size:16px;color:var(--fg);display:block">Admin Notifications &amp; Audio</b>
+        <div class="hint" style="font-size:12.5px;line-height:1.4">Push alerts, audio chimes &amp; in-app banners for new reports and claims</div>
+      </div>
+    </div>
+    <label class="switch" title="Toggle notifications on or off">
+      <input type="checkbox" id="settingsNotifToggle" ${notifOn?'checked':''}>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span class="hint" id="settingsNotifStatus" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px">
+      ${notifOn?'<span style="color:var(--good)">● Alerts Active (Push, in-app &amp; audio)</span>':'<span style="color:var(--muted)">○ Alerts Muted</span>'}
+    </span>
+    <button class="btn ghost sm" id="settingsTestNotifBtn" style="font-size:12px;padding:5px 12px">${ic('bell')}Test notification</button>
+  </div>
+</div>
+
+<div class="card rise" style="max-width:560px;margin-top:16px"><h3 style="font-size:18px">Staff &amp; Admin Roles</h3><p class="hint" style="margin:6px 0 12px"><b>Primary Manager:</b> tharanesvaran07@gmail.com (Full Manager privileges).<br>${S.isManager?`As a <b>Manager</b>, you can add new staff, change roles between Admin and Manager, or remove staff directly in the app from the <b>Admins</b> tab.`:`Your current role is <b>Admin</b>. Contact the Manager to update staff roles.`}</p>${S.isManager?`<button class="btn sm" onclick="S.view='admins';draw()">${ic('shield')}Manage staff in Admins tab</button>`:''}</div>`};
+AFTER.settings=()=>{
+  $('#hd').oninput=e=>$('#hv').textContent=e.target.value+' days';
+  $('#sv').onclick=async()=>{await S.db.doc('settings/main').set({holdDays:+$('#hd').value});toast('Settings saved')};
+
+  const stoggle=$('#settingsNotifToggle');
+  const sstatus=$('#settingsNotifStatus');
+  const stest=$('#settingsTestNotifBtn');
+  if(stoggle){
+    stoggle.onchange=async()=>{
+      const enabled=stoggle.checked;
+      await setNotifEnabled(enabled);
+      if(enabled && 'Notification' in window && Notification.permission==='default'){
+        try{await Notification.requestPermission()}catch(e){}
+      }
+      if(sstatus){
+        sstatus.innerHTML=enabled
+          ?'<span style="color:var(--good)">● Alerts Active (Push, in-app &amp; audio)</span>'
+          :'<span style="color:var(--muted)">○ Alerts Muted</span>';
+      }
+      toast(enabled?'Notifications turned ON':'Notifications turned OFF');
+    };
+  }
+  if(stest){
+    stest.onclick=()=>{
+      if(!isNotifEnabled()){
+        toast('Notifications are currently turned off. Turn the switch ON to receive alerts.');
+      }else{
+        sendNotification('🔔 Test Notification','Notifications are active and working on your device!',null,'alert');
+        toast('Test alert sent!');
+      }
+    };
+  }
+};
 
 boot();
 </script>

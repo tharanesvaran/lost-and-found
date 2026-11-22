@@ -291,6 +291,11 @@ class MainActivity : AppCompatActivity() {
                 activity.showNativeNotification(title, message)
             }
         }
+
+        @JavascriptInterface
+        fun areNotificationsEnabled(): Boolean {
+            return NotificationManagerCompat.from(activity).areNotificationsEnabled()
+        }
     }
 
     fun showNativeNotification(title: String, message: String) {
