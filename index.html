@@ -181,8 +181,12 @@ main{min-width:0}
 /* modal / toast */
 .scrim{position:fixed;inset:0;background:rgba(5,15,13,.55);backdrop-filter:blur(6px);display:grid;place-items:center;z-index:50;padding:16px;animation:fade .25s both}
 @keyframes fade{from{opacity:0}}
-.modal{background:var(--surface);border-radius:24px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);animation:pop .4s cubic-bezier(.2,.9,.3,1.2) both;border:1px solid var(--line)}
-.modal h3{font-size:22px;margin-bottom:6px}
+.modal{position:relative;background:var(--surface);border-radius:24px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);animation:pop .4s cubic-bezier(.2,.9,.3,1.2) both;border:1px solid var(--line)}
+.modal h3{font-size:22px;margin-bottom:6px;padding-right:38px;line-height:1.25}
+.modal-close{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:all .15s ease;z-index:20;padding:0;outline:none}
+.modal-close:hover,.modal-close:focus-visible{background:var(--brand-soft);color:var(--brand);border-color:var(--brand);transform:scale(1.08)}
+.modal-close:active{transform:scale(0.92)}
+.modal-close svg{width:16px;height:16px;stroke-width:2.5}
 .qrbox{display:grid;place-items:center;background:#fff;border-radius:18px;padding:16px;margin:14px 0;width:fit-content;margin-inline:auto;box-shadow:0 0 0 6px var(--brand-soft)}
 .qrbox img,.qrbox canvas{display:block;max-width:100%}
 #toasts{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:grid;gap:8px;z-index:90;width:max-content;max-width:92vw}
@@ -403,8 +407,24 @@ function sendNotification(title,body,onClick,type='match'){
 function confetti(){const c=$('#fx'),x=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
  const cols=['#0b9a89','#ff6a4d','#f5b301','#3b6fd8'];const ps=Array.from({length:90},()=>({x:innerWidth/2,y:innerHeight*.6,vx:(Math.random()-.5)*14,vy:-Math.random()*14-4,r:Math.random()*5+3,c:cols[Math.random()*4|0],a:1}));
  (function f(){x.clearRect(0,0,c.width,c.height);let alive=0;ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.35;p.a-=.012;if(p.a>0){alive++;x.globalAlpha=p.a;x.fillStyle=p.c;x.fillRect(p.x,p.y,p.r,p.r*1.6)}});alive?requestAnimationFrame(f):x.clearRect(0,0,c.width,c.height)})()}
-function modal(html,onMount){const s=document.createElement('div');s.className='scrim';s.innerHTML=`<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
- const close=()=>{s.style.opacity=0;setTimeout(()=>s.remove(),200)};s.addEventListener('click',e=>{if(e.target===s)close()});document.body.append(s);onMount&&onMount(s,close);return close}
+function modal(html,onMount){
+  const s=document.createElement('div');
+  s.className='scrim';
+  s.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><button type="button" class="modal-close" aria-label="Close dialog" title="Close">${ic('x')}</button>${html}</div>`;
+  const onKey=e=>{if(e.key==='Escape'){close()}};
+  const close=()=>{
+    document.removeEventListener('keydown',onKey);
+    s.style.opacity=0;
+    setTimeout(()=>s.remove(),200);
+  };
+  s.addEventListener('click',e=>{if(e.target===s)close()});
+  const xBtn=$('.modal-close',s);
+  if(xBtn) xBtn.onclick=e=>{e.stopPropagation();close()};
+  document.addEventListener('keydown',onKey);
+  document.body.append(s);
+  onMount&&onMount(s,close);
+  return close;
+}
 document.addEventListener('click',e=>{const b=e.target.closest('.btn');if(!b)return;const r=b.getBoundingClientRect(),d=Math.max(r.width,r.height),s=document.createElement('span');s.className='ripple';s.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;b.append(s);setTimeout(()=>s.remove(),600)});
 document.addEventListener('mousemove',e=>{const c=e.target.closest&&e.target.closest('.tilt');if(!c)return;const r=c.getBoundingClientRect();c.style.setProperty('--ry',((e.clientX-r.left)/r.width-.5)*6+'deg');c.style.setProperty('--rx',(-((e.clientY-r.top)/r.height-.5))*6+'deg')});
 document.addEventListener('mouseout',e=>{const c=e.target.closest&&e.target.closest('.tilt');if(c){c.style.setProperty('--rx','0deg');c.style.setProperty('--ry','0deg')}});
