@@ -549,6 +549,14 @@ async function putMap(col,uid,key,val){
   }
 }
 const who=c=>S.profiles.find(p=>p.uid===c.studentId)||{name:'Student',roll:''};
+const isMgrUser=u=>{
+  if(!u)return false;
+  const em=(u.email||u.id||'').toLowerCase().trim();
+  if(em==='tharanesvaran07@gmail.com')return true;
+  if(u.role==='manager'||u.isManager)return true;
+  const inAllow=(S.allowlist||[]).find(a=>(a.email||a.id||'').toLowerCase()===em);
+  return !!(inAllow&&inAllow.role==='manager');
+};
 /* ---------- login ---------- */
 function renderLogin(){
   const app=$('#app');
@@ -1051,14 +1059,16 @@ VIEWS.profile=()=>{
     ?`Signed in as ${esc(p.name)} (${roleTitle}). College administrator console.`
     :'Only you and the admin office can see this.';
 
-  const editBtn=`<button class="btn sm" id="editProfileTopBtn">${ic('user')}${isAdmin?'Edit contact':'Edit profile'}</button>`;
+  const editBtn=`<button class="btn sm" id="editProfileTopBtn">${ic('user')}${S.isManager?'Edit manager profile':(isAdmin?'Edit staff profile':'Edit profile')}</button>`;
   const badgeHtml=isAdmin
     ?`<span class="pill ${S.isManager?'p-new':'p-claimed'}" style="font-size:12px">${ic('shield')} ${roleTitle}</span>`
     :'';
 
-  const subtitleHint=isAdmin
-    ?`Staff administrative role. Name, role, and Gmail address are verified credentials. You can update your contact phone number anytime.`
-    :`Name, roll number, and Gmail address are verified college records and can only be changed by the manager. You can update your contact number and year of study anytime.`;
+  const subtitleHint=S.isManager
+    ?`Primary Manager role. You have full administrative rights to edit your name, Gmail address, department, and contact phone number.`
+    :(isAdmin
+      ?`Staff administrative role. You can update your name, department, and contact phone number. Your Gmail address is managed by the manager.`
+      :`Name, roll number, department, and Gmail address are verified college records and can only be changed by the manager. You can update your contact number and year of study anytime.`);
 
   return head(headerTitle,headerSubtitle,editBtn)+
    `<div class="card rise" style="max-width:640px">
@@ -1568,11 +1578,28 @@ function handoverModal(c){
 }
 VIEWS.handover=()=>{const l=S.handovers.slice().sort((a,b)=>b.at-a.at);return head('Handover log','Permanent record of every release.')+(l.length?`<div class="card rise scroll"><table><thead><tr><th>Date</th><th>Roll no.</th><th>Student</th><th>Item</th><th>Released by</th><th>Security</th></tr></thead><tbody>${l.map(h=>`<tr><td>${new Date(h.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td>${esc(h.roll)}</td><td>${esc(h.studentName)}</td><td>${esc(h.itemDesc)}</td><td>${esc(h.by)}</td><td><span class="pill p-returned" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px">${ic('shield')} OTP verified</span></td></tr>`).join('')}</tbody></table></div>`:empty('log','No handovers yet','Records appear here when you finish a claim.'))};
 
-VIEWS.students=()=>head('Students',S.isManager?'Search, update student details, or manage registrations.':'Search by roll number or name. Only admins can see these details.')+`<input class="in rise" id="sq" placeholder="Search by name, roll, phone, email, dept..." style="max-width:420px;margin-bottom:14px"><div id="slist" class="list" style="padding-bottom:56px"></div>`;
+VIEWS.students=()=>head('Students',S.isManager?'Search, update student details, or manage registrations.':'Search students and update verified student details. Only staff can access student records.')+`<input class="in rise" id="sq" placeholder="Search by name, roll, phone, email, dept..." style="max-width:420px;margin-bottom:14px"><div id="slist" class="list" style="padding-bottom:56px"></div>`;
 function drawStudents(){
   const q=($('#sq').value||'').toLowerCase().trim();
   const l=S.profiles.filter(p=>!q||(p.name+' '+p.roll+' '+(p.dept||'')+' '+(p.email||'')+' '+(p.phone||'')).toLowerCase().includes(q));
-  $('#slist').innerHTML=l.length?l.map((p,n)=>`<article class="card tilt rise stud-card" style="--i:${Math.min(n,8)}">
+  $('#slist').innerHTML=l.length?l.map((p,n)=>{
+    const isTargetMgr=isMgrUser(p);
+    let actionButtons='';
+    if(S.isManager){
+      actionButtons=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button class="btn ghost sm" data-edit-student="${esc(p.uid)}">Edit</button>
+        ${!isTargetMgr?`<button class="btn ghost sm bad" data-del-student="${esc(p.uid)}">Remove</button>`:''}
+      </div>`;
+    }else if(S.role==='admin'){
+      if(isTargetMgr){
+        actionButtons=`<span class="pill p-new" style="font-size:11px">${ic('shield')} Manager (Protected)</span>`;
+      }else{
+        actionButtons=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn ghost sm" data-edit-student="${esc(p.uid)}">${ic('user')}Edit student</button>
+        </div>`;
+      }
+    }
+    return `<article class="card tilt rise stud-card" style="--i:${Math.min(n,8)}">
     <div style="display:flex;gap:12px;align-items:flex-start">
       <div class="av">${esc((p.name||'?')[0])}</div>
       <div class="stud-card-body">
@@ -1585,7 +1612,7 @@ function drawStudents(){
               ${p.year?`<span>${esc(p.year)}</span>`:''}
             </div>
           </div>
-          ${S.isManager?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn ghost sm" data-edit-student="${esc(p.uid)}">Edit</button><button class="btn ghost sm bad" data-del-student="${esc(p.uid)}">Remove</button></div>`:''}
+          ${actionButtons}
         </div>
         <div class="meta" style="margin-top:6px;word-break:break-all">
           ${p.email?`<span>${ic('mail')}${esc(p.email)}</span>`:''}
@@ -1598,18 +1625,26 @@ function drawStudents(){
         </div>
       </div>
     </div>
-  </article>`).join(''):empty('users',S.profiles.length?'No match':'No students yet','Students appear after their first Google sign-in and profile setup.');
+  </article>`;
+  }).join(''):empty('users',S.profiles.length?'No match':'No students yet','Students appear after their first Google sign-in and profile setup.');
+
+  $$('[data-edit-student]').forEach(b=>{
+    b.onclick=()=>{
+      const student=S.profiles.find(x=>x.uid===b.dataset.editStudent);
+      if(!student)return;
+      if(!S.isManager&&isMgrUser(student)){
+        toast('Admins can only edit student details, not manager.');
+        return;
+      }
+      editStudentModal(student,false);
+    };
+  });
   if(S.isManager){
-    $$('[data-edit-student]').forEach(b=>{
-      b.onclick=()=>{
-        const student=S.profiles.find(x=>x.uid===b.dataset.editStudent);
-        if(student) editStudentModal(student,false);
-      };
-    });
     $$('[data-del-student]').forEach(b=>{
       b.onclick=()=>{
         const student=S.profiles.find(x=>x.uid===b.dataset.delStudent);
         if(!student) return;
+        if(isMgrUser(student)) return toast('Cannot remove manager profile.');
         modal(`<h3>Remove student</h3><p class="hint">Are you sure you want to remove <b>${esc(student.name)}</b> (${esc(student.roll)})? Their registered profile will be removed.</p><div class="row" style="margin-top:16px;gap:10px"><button class="btn bad" id="cfmDelStud">Confirm remove</button><button class="btn ghost" id="cxlDelStud">Cancel</button></div>`,(s,close)=>{
           $('#cxlDelStud',s).onclick=close;
           $('#cfmDelStud',s).onclick=async()=>{
@@ -1702,12 +1737,18 @@ function adminModal(existing=null){
   const email=existing?(existing.email||existing.id||''):'';
   const username=existing?(existing.username||existing.name||''):'';
   const role=existing?(existing.role||'admin'):'admin';
-  modal(`<h3>${isEdit?'Edit staff details':'Add new admin / manager'}</h3><p class="hint">${isEdit?'Update name and role for this staff member.':'Enter the Google email address of the staff member.'}</p>
+  const isPrimary=email==='tharanesvaran07@gmail.com';
+
+  const emailField=isPrimary
+    ?`<label class="f">Google email <span style="font-size:11px;font-weight:600;color:var(--muted)">(Primary Manager)</span><input class="in" id="ame" type="email" required readonly value="${esc(email)}" style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`
+    :`<label class="f">Google email <span style="font-size:11px;font-weight:600;color:var(--brand)">(Manager Editable)</span><input class="in" id="ame" type="email" required value="${esc(email)}" placeholder="staff@gmail.com"></label>`;
+
+  modal(`<h3>${isEdit?'Edit staff details':'Add new admin / manager'}</h3><p class="hint">${isEdit?'Update email, name and role for this staff member.':'Enter the Google email address of the staff member.'}</p>
     <form id="amf" class="list" style="gap:14px;margin-top:14px">
-      <label class="f">Google email<input class="in" id="ame" type="email" required ${isEdit?'readonly style="opacity:0.75"':''} value="${esc(email)}" placeholder="staff@gmail.com"></label>
+      ${emailField}
       <label class="f">Name / Username<input class="in" id="amu" required value="${esc(username)}" placeholder="e.g. Ramesh Kumar"></label>
       <label class="f">Role
-        <select class="in" id="amr">
+        <select class="in" id="amr" ${isPrimary?'disabled style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"':''}>
           <option value="admin" ${role==='admin'?'selected':''}>Admin (Manage items, claims, handovers)</option>
           <option value="manager" ${role==='manager'?'selected':''}>Manager (Manage admins, students, and items)</option>
         </select>
@@ -1719,20 +1760,23 @@ function adminModal(existing=null){
       e.preventDefault();
       const em=$('#ame',s).value.toLowerCase().trim();
       const un=$('#amu',s).value.trim();
-      const ro=$('#amr',s).value;
+      const ro=isPrimary?'manager':$('#amr',s).value;
       if(!em||!em.includes('@')){
         $('#amerr',s).textContent='Please enter a valid email address.';
         return;
       }
-      if(isEdit&&em==='tharanesvaran07@gmail.com'&&ro!=='manager'){
-        $('#amerr',s).textContent='Primary manager role cannot be changed.';
+      if(isEdit&&email==='tharanesvaran07@gmail.com'&&em!=='tharanesvaran07@gmail.com'){
+        $('#amerr',s).textContent='Primary manager email address cannot be changed.';
         return;
       }
       try{
         const payload={email:em,username:un,role:ro,at:now()};
+        if(isEdit&&email&&email!==em){
+          await S.db.collection('adminAllowlist').doc(email).delete();
+        }
         await S.db.collection('adminAllowlist').doc(em).set(payload);
         close();
-        toast(isEdit?'Staff details updated':'New staff member added');
+        toast(isEdit?(email!==em?'Admin Gmail and details updated':'Staff details updated'):'New staff member added');
         paint(false);
       }catch(err){console.error(err);$('#amerr',s).textContent='Could not save: '+(err.message||'error')}
     };
@@ -1741,36 +1785,107 @@ function adminModal(existing=null){
 
 function editStudentModal(student, isSelf=false){
   const p=student||{};
-  const canEditIdentity=S.isManager && !isSelf;
-  const canEditEmail=S.isManager && !isSelf;
-  const isStaffSelf=isSelf && S.role==='admin';
+  const isTargetMgr=isMgrUser(p);
+  const isSelfStaff=isSelf && (S.role==='admin' || S.isManager);
 
-  const title=isSelf ? (isStaffSelf ? 'Edit staff contact' : 'Edit your profile') : (S.isManager ? 'Edit student details' : 'Student details');
-  const subtitle=isSelf 
-    ? (isStaffSelf
-        ? 'You can update your contact number. Name, role, and Gmail address are verified administrator credentials.'
-        : 'You can update your contact number and year of study. Name, roll number, department, and Gmail address are verified college records and can only be changed by the manager.') 
-    : (S.isManager ? 'Update verified registration information for '+esc(p.name||'Student')+'.' : 'View student registration information.');
+  // If Admin attempts to edit a Manager: Block!
+  if(!isSelf && !S.isManager && isTargetMgr){
+    toast('Access denied: Admins can only edit student details, not manager.');
+    return;
+  }
 
-  const nameInput=canEditIdentity
+  // Permissions configuration:
+  let canEditName=false;
+  let canEditRoll=false;
+  let canEditDept=false;
+  let canEditPhone=true;
+  let canEditEmail=false;
+  let canEditYear=false;
+
+  let title='Edit profile';
+  let subtitle='';
+
+  if(isSelf){
+    if(S.isManager){
+      // Manager has ALL rights to edit his details
+      canEditName=true;
+      canEditRoll=true;
+      canEditDept=true;
+      canEditPhone=true;
+      canEditEmail=true;
+      canEditYear=false;
+      title='Edit manager profile';
+      subtitle='You have full administrative rights to update all your details including name, Gmail address, department, and contact phone number.';
+    } else if(S.role==='admin'){
+      // Admin editing his own profile: can edit name, phone, dept; CANNOT edit his Gmail
+      canEditName=true;
+      canEditRoll=false;
+      canEditDept=true;
+      canEditPhone=true;
+      canEditEmail=false; // admin cant edit his gmail. admin gmail can only be edited by manager.
+      canEditYear=false;
+      title='Edit staff profile';
+      subtitle='You can update your name, contact number, and department. Your Gmail address is managed solely by the college manager.';
+    } else {
+      // Student editing his own profile: can ONLY edit contact number and year of study
+      canEditName=false;
+      canEditRoll=false;
+      canEditDept=false;
+      canEditPhone=true;
+      canEditEmail=false;
+      canEditYear=true;
+      title='Edit your profile';
+      subtitle='You can update your contact number and year of study. Name, roll number, department, and Gmail address are verified college records and can only be changed by staff.';
+    }
+  } else {
+    // Editing another user's profile
+    if(S.isManager){
+      // Manager can edit all details of students and staff
+      canEditName=true;
+      canEditRoll=true;
+      canEditDept=true;
+      canEditPhone=true;
+      canEditEmail=true;
+      canEditYear=true;
+      title='Edit student details';
+      subtitle='Manager controls: Update verified registration information for '+esc(p.name||'Student')+'.';
+    } else if(S.role==='admin'){
+      // Admin can edit only students details, not manager
+      canEditName=true;
+      canEditRoll=true;
+      canEditDept=true;
+      canEditPhone=true;
+      canEditEmail=false; // admin cannot edit Gmail; only manager can edit Gmail
+      canEditYear=true;
+      title='Edit student details';
+      subtitle='Admin controls: Update student registration details for '+esc(p.name||'Student')+'. (Student Gmail is managed by the manager).';
+    }
+  }
+
+  const nameInput=canEditName
     ? `<label class="f">Full name<input class="in" id="es_name" required value="${esc(p.name||'')}"></label>`
     : `<label class="f">Full name <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_name" value="${esc(p.name||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
 
-  const rollInput=canEditIdentity
-    ? `<label class="f">Roll number<input class="in" id="es_roll" required value="${esc(p.roll||'')}" placeholder="21CS104"></label>`
-    : `<label class="f">Roll number <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_roll" value="${esc(p.roll||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
+  const rollLabel=isSelfStaff?'Designation / Title':'Roll number';
+  const rollVal=isSelfStaff?(p.roll||(S.isManager?'Manager':'Staff Admin')):(p.roll||'');
+  const rollInput=canEditRoll
+    ? `<label class="f">${rollLabel}<input class="in" id="es_roll" required value="${esc(rollVal)}" placeholder="${isSelfStaff?'Manager':'21CS104'}"></label>`
+    : `<label class="f">${rollLabel} <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_roll" value="${esc(rollVal)}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
 
-  const deptInput=canEditIdentity
-    ? `<label class="f">Department<input class="in" id="es_dept" required value="${esc(p.dept||'')}" placeholder="Computer Science"></label>`
+  const deptInput=canEditDept
+    ? `<label class="f">Department<input class="in" id="es_dept" required value="${esc(p.dept||'')}" placeholder="Campus Administration"></label>`
     : `<label class="f">Department <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Manager only)</span><input class="in" id="es_dept" value="${esc(p.dept||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
 
   const phoneInput=`<label class="f">Contact number<input class="in" id="es_phone" required inputmode="tel" pattern="[0-9+ \\-]{8,15}" value="${esc(p.phone||'')}" placeholder="98765 43210"></label>`;
 
+  const emailHint=canEditEmail?(isSelf&&S.isManager?'(Manager Editable)':'(Editable)'):'(Locked · Manager only)';
   const emailInput=canEditEmail
-    ? `<label class="f">Gmail address<input class="in" id="es_email" type="email" required value="${esc(p.email||'')}" placeholder="student@gmail.com"></label>`
-    : `<label class="f">Gmail address <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked · Google Account)</span><input class="in" id="es_email" type="email" value="${esc(p.email||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
+    ? `<label class="f">Gmail address <span style="font-size:11px;font-weight:600;color:var(--brand)">${emailHint}</span><input class="in" id="es_email" type="email" required value="${esc(p.email||'')}" placeholder="user@gmail.com"></label>`
+    : `<label class="f">Gmail address <span style="font-size:11px;font-weight:600;color:var(--muted)">${emailHint}</span><input class="in" id="es_email" type="email" value="${esc(p.email||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`;
 
-  const yearInput=isStaffSelf ? '' : `<label class="f">Year of study<select class="in" id="es_year" required><option value="">Select</option>${['1st year','2nd year','3rd year','4th year','PG / other'].map(y=>`<option ${p.year===y?'selected':''}>${y}</option>`).join('')}</select></label>`;
+  const yearInput=isSelfStaff?'':(canEditYear
+    ? `<label class="f">Year of study<select class="in" id="es_year" required><option value="">Select</option>${['1st year','2nd year','3rd year','4th year','PG / other'].map(y=>`<option ${p.year===y?'selected':''}>${y}</option>`).join('')}</select></label>`
+    : `<label class="f">Year of study <span style="font-size:11px;font-weight:600;color:var(--muted)">(Locked)</span><input class="in" id="es_year" value="${esc(p.year||'')}" disabled readonly style="opacity:0.75;cursor:not-allowed;background:var(--surface2)"></label>`);
 
   modal(`<h3>${title}</h3><p class="hint">${subtitle}</p>
     <form id="esf" class="grid2" style="grid-template-columns:1fr;margin-top:12px">
@@ -1783,21 +1898,34 @@ function editStudentModal(student, isSelf=false){
     </form>`,(s,close)=>{
     $('#esf',s).onsubmit=async e=>{
       e.preventDefault();
+      const newName=canEditName?($('#es_name',s).value.trim()||p.name||''):(p.name||'');
+      const newRoll=canEditRoll?($('#es_roll',s).value.trim().toUpperCase()||p.roll||''):(p.roll||'');
+      const newDept=canEditDept?($('#es_dept',s).value.trim()||p.dept||''):(p.dept||'');
+      const newPhone=$('#es_phone',s).value.trim();
+      const newEmail=canEditEmail?($('#es_email',s).value.trim().toLowerCase()||p.email||''):(p.email||'');
+      const newYear=isSelfStaff?(p.year||''):($('#es_year',s)?$('#es_year',s).value:(p.year||''));
+
       const updated={
         uid:p.uid||S.me.id,
-        name:canEditIdentity ? ($('#es_name',s).value.trim()||p.name||'') : (p.name||''),
-        roll:canEditIdentity ? ($('#es_roll',s).value.trim().toUpperCase()||p.roll||'') : (p.roll||''),
-        dept:canEditIdentity ? ($('#es_dept',s).value.trim()||p.dept||'') : (p.dept||''),
-        phone:$('#es_phone',s).value.trim(),
-        email:canEditEmail ? ($('#es_email',s).value.trim().toLowerCase()) : (p.email||''),
-        year:isStaffSelf ? (p.year||'') : ($('#es_year',s)?$('#es_year',s).value:(p.year||'')),
+        name:newName,
+        roll:newRoll,
+        dept:newDept,
+        phone:newPhone,
+        email:newEmail,
+        year:newYear,
         at:p.at||now()
       };
+      if(p.role) updated.role=p.role;
+
       try{
         await S.db.collection('profiles').doc(updated.uid).set(updated);
         await S.db.doc('data/users/'+updated.uid+'/profile').set(updated);
         if(S.me&&S.me.id===updated.uid){
           S.profile={...(S.profile||{}),...updated};
+          if(updated.name) S.adminName=updated.name;
+          if(S.isManager&&updated.email&&updated.email!==S.me.email){
+            await S.db.collection('adminAllowlist').doc(updated.email).set({email:updated.email,username:updated.name,role:'manager',at:now()}).catch(()=>{});
+          }
         }
         const idx=S.profiles.findIndex(x=>x.uid===updated.uid);
         if(idx>=0){S.profiles[idx]={...S.profiles[idx],...updated};}else{S.profiles.push(updated);}
