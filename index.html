@@ -881,13 +881,32 @@ function paint(anim=true){
 /* ---------- map ---------- */
 const ROADS='M0 12H400M95 83L335 74M0 222L135 208L270 193M285 254H355M90 20L108 140L125 280L132 430M262 15L270 150L285 300L300 430M188 128L192 200L190 260L204 350L215 430';
 const DECOR=[[0,115,95,90],[24,372,90,50],[310,338,40,38],[354,338,40,38],[310,384,84,38],[200,226,18,18],[350,262,40,40]];
-function mapSVG(id){return `<svg class="map" id="${id}" viewBox="0 0 400 430" role="img" aria-label="Campus map. Tap to drop a pin.">
+function mapSVG(id,optText='Tap the map to mark the spot'){return `<svg class="map" id="${id}" viewBox="0 0 400 430" role="img" aria-label="Campus map. Tap to drop a pin.">
  <path class="road" d="${ROADS}"/>${DECOR.map(d=>`<rect class="dec" x="${d[0]}" y="${d[1]}" width="${d[2]}" height="${d[3]}" rx="4"/>`).join('')}<circle class="dec" cx="139" cy="217" r="20"/>
  ${ZONES.map(z=>{const o=z[5]||{},cx=z[1]+z[3]/2,cy=z[2]+z[4]/2,ls=o.l||[z[0]],fs=o.fs||10;
   return `<rect class="z ${o.b?'b':''}" x="${z[1]}" y="${z[2]}" width="${z[3]}" height="${z[4]}" rx="7" data-z="${z[0]}"/><text ${o.rot?`transform="rotate(${o.rot} ${cx} ${cy})"`:''} text-anchor="middle" style="font-size:${fs}px">${ls.map((t,i)=>`<tspan x="${cx}" y="${cy+(i-(ls.length-1)/2)*(fs+2)+fs*.35}">${t}</tspan>`).join('')}</text>`}).join('')}
- <g id="${id}-pin"></g><text class="nrth" x="380" y="26" text-anchor="middle">N</text><path class="nrth-a" d="M380 30v14M376 35l4-5 4 5"/></svg><div class="pinlabel" id="${id}-lbl">${ic('pin')}<span>Tap the map to mark the spot</span></div><p class="hint" style="margin:4px 0 0">Simplified campus map, not to scale.</p>`}
-function bindMap(id,cb){const svg=$('#'+id);if(!svg)return;
- const put=()=>{if(!S.pick)return;$('#'+id+'-pin').innerHTML=`<g class="pin"><path d="M0 0c0-9 7-9 7-16a7 7 0 0 0-14 0c0 7 7 7 7 16z" transform="translate(${S.pick.x} ${S.pick.y})" fill="var(--hot)" stroke="#fff" stroke-width="1.5"/><circle cx="${S.pick.x}" cy="${S.pick.y-16}" r="2.800" fill="#fff"/></g>`;$('#'+id+'-lbl span').textContent=S.pick.zone;$$('.z',svg).forEach(z=>z.classList.toggle('on',z.dataset.z===S.pick.zone))};
+ <g id="${id}-pin"></g><text class="nrth" x="380" y="26" text-anchor="middle">N</text><path class="nrth-a" d="M380 30v14M376 35l4-5 4 5"/></svg>
+ <div class="pinlabel" id="${id}-lbl" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+   <div style="display:flex;align-items:center;gap:6px">${ic('pin')}<span id="${id}-txt">${optText}</span></div>
+   <button type="button" class="btn ghost sm" id="${id}-clr" style="display:none;padding:2px 8px;font-size:11px;margin:0" onclick="event.stopPropagation();if(window.clearMapPin)window.clearMapPin('${id}')">Clear pin</button>
+ </div>
+ <p class="hint" style="margin:4px 0 0">Simplified campus map, not to scale.</p>`}
+function bindMap(id,cb,defaultText='Tap the map to mark the spot'){const svg=$('#'+id);if(!svg)return;
+ const put=()=>{
+   const clr=$('#'+id+'-clr'),txt=$('#'+id+'-txt')||$('#'+id+'-lbl span');
+   if(!S.pick){
+     $('#'+id+'-pin').innerHTML='';
+     if(txt)txt.textContent=defaultText;
+     $$('.z',svg).forEach(z=>z.classList.remove('on'));
+     if(clr)clr.style.display='none';
+     return;
+   }
+   $('#'+id+'-pin').innerHTML=`<g class="pin"><path d="M0 0c0-9 7-9 7-16a7 7 0 0 0-14 0c0 7 7 7 7 16z" transform="translate(${S.pick.x} ${S.pick.y})" fill="var(--hot)" stroke="#fff" stroke-width="1.5"/><circle cx="${S.pick.x}" cy="${S.pick.y-16}" r="2.800" fill="#fff"/></g>`;
+   if(txt)txt.textContent=S.pick.zone;
+   $$('.z',svg).forEach(z=>z.classList.toggle('on',z.dataset.z===S.pick.zone));
+   if(clr)clr.style.display='inline-block';
+ };
+ window.clearMapPin=mid=>{if(mid===id){S.pick=null;put();cb&&cb(null)}};
  svg.addEventListener('click',e=>{const r=svg.getBoundingClientRect(),x=Math.round((e.clientX-r.left)/r.width*400),y=Math.round((e.clientY-r.top)/r.height*430);S.pick={x,y,zone:zoneAt(x,y)};put();cb&&cb(S.pick)});put();return put}
 
 /* ---------- shared bits ---------- */
@@ -1045,33 +1064,47 @@ function reportForm(kind){const found=kind==='found';
   `<form id="rf" class="card rise" style="display:grid;gap:14px;max-width:760px"><div class="grid2"><label class="f">Category<select class="in" id="rc" required>${CATS.map(c=>`<option>${c[0]}</option>`).join('')}</select></label>
    <label class="f">${found?'Date &amp; time found':'Date &amp; time lost'}<input class="in" id="rd" type="datetime-local" required value="${nowDateTimeLocal()}"></label></div>
    <label class="f">Details<textarea class="in" id="rt" required placeholder="${found?'Colour, brand, size. Keep secret marks or contents for the office.':'Colour, brand, size, stickers, case, wallpaper'}"></textarea></label>
-   <div><b style="font-size:13px;color:var(--muted)">${found?'Where did you find it?':'Where did you lose it?'}</b><div style="margin-top:6px">${mapSVG('pm')}</div></div>
+   <div>
+     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+       <b style="font-size:13px;color:var(--muted)">${found?'Where did you find it? (Optional)':'Where did you lose it? (Optional)'}</b>
+       <span class="hint" style="font-size:12px">Optional — leave unpinned if unsure</span>
+     </div>
+     ${mapSVG('pm','Tap map to pin location (optional)')}
+   </div>
    <div class="msg-bad" id="lerr"></div><button class="btn" style="justify-self:start">${found?'Send found report':'Send lost report'}</button></form>`}
 VIEWS.lostrep=()=>reportForm('lost');
 VIEWS.handin=()=>head('Found something?','Only the admin office logs found items. Students do not file found reports.')+`<div class="card rise" style="max-width:640px"><div class="tl" style="grid-template-columns:repeat(3,1fr)">${['Pick it up safely','Bring it to the admin office','Staff log and store it'].map((t,k)=>`<div class="s done"><i>${ic('check')}</i>${t}</div>`).join('')}</div>
  <p style="margin:20px 0 0">Hand the item straight to the admin office. Staff record who found it, where and when, store it safely, and list it here for its owner to claim. Tell the staff your name so the return is added to your history once the owner collects it. Please do not post details of what you found anywhere else.</p></div>
  <div class="banner rise" style="margin-top:14px">${ic('shield')}Valuables like phones, wallets and laptops go into a locked cabinet. IDs, ATM cards and certificates are returned by direct contact.</div>`;
-function afterReport(kind){bindMap('pm');$('#rf').onsubmit=async e=>{e.preventDefault();if(!S.pick){$('#lerr').textContent='Tap the map to mark the location.';return}
-  const p=S.profile||{},id=S.db.collection(kind).doc().id;
-  const rec={id,kind,studentId:S.me.id,name:p.name||S.me.name||'Student',roll:p.roll||'',phone:p.phone||'',email:p.email||S.me.email||'',cat:$('#rc').value,desc:$('#rt').value.trim(),zone:S.pick.zone,x:S.pick.x,y:S.pick.y,when:$('#rd').value,whenTs:new Date($('#rd').value).getTime()||now(),ts:now(),status:kind==='found'?'new':'open'};
-  try{
-    await putMap(kind,S.me.id,id,rec);
-    await S.db.doc('data/users/'+S.me.id+'/rep_'+id).set(rec).catch(()=>{});
-    if(!S.reports.some(r=>r.id===id)) S.reports.push(rec);
-    if(kind==='lost'&&!S.lost.some(l=>l.id===id)) S.lost.push(rec);
-    S.pick=null;confetti();
-    toast(kind==='found'?'Thanks! Now hand the item to the admin office.':'Lost report filed. We will flag matches.');
-    S.view='profile';draw();
-  }
-  catch(err){console.error(err);$('#lerr').textContent='Could not send. Check your connection and try again.'}}}
+function afterReport(kind){
+  S.pick=null;
+  bindMap('pm',null,'Tap map to pin location (optional)');
+  $('#rf').onsubmit=async e=>{
+    e.preventDefault();
+    const p=S.profile||{},id=S.db.collection(kind).doc().id;
+    const z=S.pick?S.pick.zone:'Not specified';
+    const px=S.pick?S.pick.x:null;
+    const py=S.pick?S.pick.y:null;
+    const rec={id,kind,studentId:S.me.id,name:p.name||S.me.name||'Student',roll:p.roll||'',phone:p.phone||'',email:p.email||S.me.email||'',cat:$('#rc').value,desc:$('#rt').value.trim(),zone:z,x:px,y:py,when:$('#rd').value,whenTs:new Date($('#rd').value).getTime()||now(),ts:now(),status:kind==='found'?'new':'open'};
+    try{
+      await putMap(kind,S.me.id,id,rec);
+      await S.db.doc('data/users/'+S.me.id+'/rep_'+id).set(rec).catch(()=>{});
+      if(!S.reports.some(r=>r.id===id)) S.reports.push(rec);
+      if(kind==='lost'&&!S.lost.some(l=>l.id===id)) S.lost.push(rec);
+      S.pick=null;confetti();
+      toast(kind==='found'?'Thanks! Now hand the item to the admin office.':'Lost report filed. We will flag matches.');
+      S.view='profile';draw();
+    }
+    catch(err){console.error(err);$('#lerr').textContent='Could not send. Check your connection and try again.'};
+  };
+}
 AFTER.lostrep=()=>afterReport('lost');
-function historyCard(){const me=S.me.id,rt=S.returns.find(x=>x.id===me)||{count:0};
-  const ret=Object.entries(rt).filter(([k])=>k.startsWith('log_')).map(([,v])=>({t:'returned',desc:v.desc,at:v.at}));
+function historyCard(){const me=S.me.id;
   const lost=S.reports.filter(r=>r.kind==='lost').map(r=>({t:'lost',desc:`${r.cat}: ${r.desc.slice(0,70)}`,at:r.ts,zone:r.zone}));
   const got=S.claims.filter(c=>c.studentId===me&&c.status==='collected').map(c=>({t:'got',desc:c.itemDesc,at:c.ts}));
-  const all=[...ret,...lost,...got].sort((a,b)=>b.at-a.at),L={returned:['Found and returned to owner','p-returned'],lost:['Reported lost','p-claimed'],got:['Got back','p-new']};
-  return `<div class="sec">Your history</div><div class="stats" style="max-width:640px">${[['Found items returned to owners',ret.length,'var(--good)'],['Lost reports filed',lost.length,'var(--hot)'],['Own items got back',got.length,'var(--info)']].map(([l,n,c],k)=>`<div class="stat rise" style="--c:${c};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
-  <div class="card rise" style="max-width:640px">${all.length?all.map(h=>`<div class="lb"><span class="grow">${esc(h.desc)}<div class="hint">${fmtDate(h.at)}${h.zone?' · '+esc(h.zone):''}</div></span><span class="pill ${L[h.t][1]}">${L[h.t][0]}</span></div>`).join(''):'<p class="hint" style="margin:0">Nothing yet. Items you hand in that reach their owner, and lost reports you file, will appear here.</p>'}</div>`}
+  const all=[...lost,...got].sort((a,b)=>b.at-a.at),L={lost:['Reported lost','p-claimed'],got:['Got back','p-new']};
+  return `<div class="sec">Your history</div><div class="stats" style="max-width:640px">${[['Lost reports filed',lost.length,'var(--hot)'],['Own items got back',got.length,'var(--info)']].map(([l,n,c],k)=>`<div class="stat rise" style="--c:${c};--i:${k}"><b data-count="${n}">0</b><span>${l}</span></div>`).join('')}</div>
+  <div class="card rise" style="max-width:640px">${all.length?all.map(h=>`<div class="lb"><span class="grow">${esc(h.desc)}<div class="hint">${fmtDate(h.at)}${h.zone?' · '+esc(h.zone):''}</div></span><span class="pill ${L[h.t][1]}">${L[h.t][0]}</span></div>`).join(''):'<p class="hint" style="margin:0">Nothing yet. Lost reports you file and items you recover will appear here.</p>'}</div>`}
 function adminActivityCard(){
   const myName=S.adminName||S.me?.name||'';
   const myItems=S.priv.filter(i=>i.loggedBy===myName);
